@@ -4,7 +4,7 @@ import random
 
 
 class PriorityExperienceReplay(object):
-    def __init__(self, buffer_size, embedding_dim):
+    def __init__(self, buffer_size, embedding_dim, state_size):
         self.buffer_size = buffer_size
         self.crt_idx = 0
         self.is_full = False
@@ -16,10 +16,10 @@ class PriorityExperienceReplay(object):
             rewards : (1,), 
             dones : (1,)
         """
-        self.states = np.zeros((buffer_size, 3 * embedding_dim), dtype=np.float32)
+        self.states = np.zeros((buffer_size, state_size), dtype=np.float32)
         self.actions = np.zeros((buffer_size, embedding_dim), dtype=np.float32)
         self.rewards = np.zeros((buffer_size), dtype=np.float32)
-        self.next_states = np.zeros((buffer_size, 3 * embedding_dim), dtype=np.float32)
+        self.next_states = np.zeros((buffer_size, state_size), dtype=np.float32)
         self.dones = np.zeros(buffer_size, np.bool)
 
         self.sum_tree = SumTree(buffer_size)

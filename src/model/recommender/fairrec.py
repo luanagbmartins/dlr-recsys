@@ -94,15 +94,19 @@ class FairRecAgent:
                 np.zeros(
                     (
                         1,
-                        embedding_dim,
+                        state_size,
+                        self.embedding_dim,
                     )
                 ),
-                np.zeros((1, state_size, embedding_dim)),
+                np.zeros((1, 1, self.embedding_dim)),
+                np.zeros((1, self.n_groups)),
             ]
         )
 
         self.buffer = PriorityExperienceReplay(
-            self.replay_memory_size, self.embedding_dim
+            self.replay_memory_size,
+            self.embedding_dim,
+            self.srm_size * self.embedding_dim,
         )
         self.epsilon_for_priority = 1e-6
 
@@ -211,12 +215,12 @@ class FairRecAgent:
                 )
 
                 groups_eb = []
-                for items in [66, 108, 577, 619, 13]:
+                for items in items_ids:
                     groups_eb.append(
                         self.embedding_network.get_layer("movie_embedding")(
                             np.array(
                                 [
-                                    k
+                                    k - 1
                                     for k, v in self.env.movies_group.items()
                                     if v == self.env.movies_group[items]
                                 ]
@@ -269,12 +273,12 @@ class FairRecAgent:
                 )
 
                 groups_eb = []
-                for items in [66, 108, 577, 619, 13]:
+                for items in items_ids:
                     groups_eb.append(
                         self.embedding_network.get_layer("movie_embedding")(
                             np.array(
                                 [
-                                    k
+                                    k - 1
                                     for k, v in self.env.movies_group.items()
                                     if v == self.env.movies_group[items]
                                 ]
@@ -436,12 +440,12 @@ class FairRecAgent:
             )
 
             groups_eb = []
-            for items in [66, 108, 577, 619, 13]:
+            for items in items_ids:
                 groups_eb.append(
                     self.embedding_network.get_layer("movie_embedding")(
                         np.array(
                             [
-                                k
+                                k - 1
                                 for k, v in self.env.movies_group.items()
                                 if v == self.env.movies_group[items]
                             ]

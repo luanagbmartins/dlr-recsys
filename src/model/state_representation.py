@@ -29,7 +29,7 @@ class FairRecStateRepresentation(tf.keras.Model):
 
         self.attention = tf.keras.layers.Attention()
 
-        self.fav = tf.keras.layers.Dense(n_groups, activation="relu")
+        self.fav = tf.keras.layers.Dense(embedding_dim, activation="relu")
 
         self.concat = tf.keras.layers.Concatenate(axis=1)
         self.flatten = tf.keras.layers.Flatten()
@@ -39,7 +39,7 @@ class FairRecStateRepresentation(tf.keras.Model):
         for group in x[1]:
             group_mean.append(tf.reduce_mean(group / self.embedding_dim, axis=0))
         group_mean = tf.stack(group_mean)
-        items = self.add(x[0], np.expand_dims(group_mean, axis=0))
+        items = self.add([x[0], np.expand_dims(group_mean, axis=0)])
 
         # attention_hidden_layer = tf.nn.relu(items)
         # score = self.V(attention_hidden_layer)

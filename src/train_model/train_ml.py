@@ -100,6 +100,7 @@ class MovieLens(luigi.Task):
             dataset["movies_id_to_movies"],
             dataset["movies_groups"],
             self.state_size,
+            self.fairness_constraints,
         )
 
         print("---------- Initialize Agent")
@@ -157,7 +158,7 @@ class MovieLens(luigi.Task):
             [
                 int((f.split("_")[1]).split(".")[0])
                 for f in os.listdir(self.output_path)
-                if f.startswith("actor")
+                if f.startswith("critic")
             ]
         )
 
