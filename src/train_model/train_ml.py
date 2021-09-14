@@ -1,5 +1,6 @@
 import os
 import time
+import datetime
 import yaml
 import json
 import pickle
@@ -14,14 +15,16 @@ import matplotlib.pyplot as plt
 
 from src.data.dataset import DatasetGeneration
 from src.environment.ml_env import OfflineEnv
+from src.environment.ml_fair_env import OfflineEnv as OfflineFairEnv
 
 from src.model.recommender import DRRAgent, FairRecAgent
 
-OUTPUT_PATH = os.path.join(os.getcwd(), "model")
 AGENT = dict(drr=DRRAgent, fairrec=FairRecAgent)
 
 
 class MovieLens(luigi.Task):
+    output_path = luigi.Parameter()
+
     algorithm: str = luigi.ChoiceParameter(choices=AGENT.keys())
     users_num: int = luigi.IntParameter(default=6041)
     items_num: int = luigi.IntParameter(default=3953)
@@ -47,11 +50,6 @@ class MovieLens(luigi.Task):
     load_model: bool = luigi.BoolParameter()
     dataset_path: str = luigi.Parameter()
     evaluate: bool = luigi.BoolParameter()
-
-    def __init__(self, *args, **kwargs):
-        super(MovieLens, self).__init__(*args, **kwargs)
-
-        self.output_path = os.path.join(OUTPUT_PATH, self.train_version)
 
     def output(self):
         return {
@@ -94,14 +92,24 @@ class MovieLens(luigi.Task):
 
     def train_model(self, dataset):
         print("---------- Prepare Env")
-        env = OfflineEnv(
-            dataset["train_users_dict"],
-            dataset["train_users_history_lens"],
-            dataset["movies_id_to_movies"],
-            dataset["movies_groups"],
-            self.state_size,
-            self.fairness_constraints,
-        )
+
+        if self.algorithm == "drr":
+            env = OfflineEnv(
+                dataset["train_users_dict"],
+                dataset["train_users_history_lens"],
+                dataset["movies_id_to_movies"],
+                dataset["movies_groups"],
+                self.state_size,
+            )
+        else:
+            env = OfflineFairEnv(
+                dataset["train_users_dict"],
+                dataset["train_users_history_lens"],
+                dataset["movies_id_to_movies"],
+                dataset["movies_groups"],
+                self.state_size,
+                self.fairness_constraints,
+            )
 
         print("---------- Initialize Agent")
         recommender = AGENT[self.algorithm](
@@ -151,14 +159,14 @@ class MovieLens(luigi.Task):
             [
                 int((f.split("_")[1]).split(".")[0])
                 for f in os.listdir(self.output_path)
-                if f.startswith("actor")
+                if f.startswith("actor_")
             ]
         )
         critic_checkpoints = sorted(
             [
                 int((f.split("_")[1]).split(".")[0])
                 for f in os.listdir(self.output_path)
-                if f.startswith("critic")
+                if f.startswith("critic_")
             ]
         )
 
@@ -171,20 +179,32 @@ class MovieLens(luigi.Task):
             sum_cvr = 0
             sum_ufg = 0
 
-            env = OfflineEnv(
-                dataset["train_users_dict"],
-                dataset["train_users_history_lens"],
-                dataset["movies_id_to_movies"],
-                dataset["movies_groups"],
-                self.state_size,
-            )
+            if self.algorithm == "drr":
+                env = OfflineEnv(
+                    dataset["train_users_dict"],
+                    dataset["train_users_history_lens"],
+                    dataset["movies_id_to_movies"],
+                    dataset["movies_groups"],
+                    self.state_size,
+                )
+            else:
+                env = OfflineFairEnv(
+                    dataset["train_users_dict"],
+                    dataset["train_users_history_lens"],
+                    dataset["movies_id_to_movies"],
+                    dataset["movies_groups"],
+                    self.state_size,
+                    self.fairness_constraints,
+                )
 
-            recommender = DRRAgent(
+            recommender = AGENT[self.algorithm](
                 env=env,
                 users_num=self.users_num,
                 items_num=self.items_num,
+                srm_size=self.srm_size,
                 state_size=self.state_size,
                 train_version=self.train_version,
+                is_test=True,
                 use_wandb=self.use_wandb,
                 embedding_dim=self.embedding_dim,
                 actor_hidden_dim=self.actor_hidden_dim,
@@ -199,6 +219,8 @@ class MovieLens(luigi.Task):
                 embedding_network_weights_path=os.path.join(
                     self.output_path, self.embedding_network_weights
                 ),
+                n_groups=self.n_groups,
+                fairness_constraints=self.fairness_constraints,
             )
 
             recommender.actor.build_networks()

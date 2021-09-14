@@ -40,6 +40,7 @@ class OfflineEnv(object):
 
         self.movies_groups = movies_groups
         self.group_count = {}
+        self.total_recommended_items = 0
         self.fairness_constraints = fairness_constraints
 
     def _generate_available_users(self):
@@ -60,11 +61,12 @@ class OfflineEnv(object):
         self.done = False
         self.recommended_items = set(self.items)
         self.group_count.clear()
+        self.total_recommended_items = 0
         return self.user, self.items, self.done
 
     def step(self, action, top_k=False):
 
-        reward = -1
+        reward = -2
 
         if top_k:
             correctly_recommended = []
@@ -74,6 +76,7 @@ class OfflineEnv(object):
                 if group not in self.group_count:
                     self.group_count[group] = 0
                 self.group_count[group] += 1
+                self.total_recommended_items += 1
 
                 if act in self.user_items.keys() and act not in self.recommended_items:
                     correctly_recommended.append(act)
@@ -83,18 +86,19 @@ class OfflineEnv(object):
                             self.fairness_constraints[group - 1]
                             / sum(self.fairness_constraints)
                         )
-                        - (self.group_count[group] / len(self.recommended_items))
+                        - (self.group_count[group] / self.total_recommended_items)
                         + 1
                     )
                     rewards.append(rew)  # 0.5 * (self.user_items[act] - 3))
                 else:
-                    rewards.append(-1)
+                    rewards.append(-2)
                 self.recommended_items.add(act)
 
             if max(rewards) > 0:
                 self.items = (
                     self.items[len(correctly_recommended) :] + correctly_recommended
                 )
+                self.items = self.items[-self.state_size :]
             reward = rewards
 
         else:
@@ -102,6 +106,7 @@ class OfflineEnv(object):
             if group not in self.group_count:
                 self.group_count[group] = 0
             self.group_count[group] += 1
+            self.total_recommended_items += 1
 
             if (
                 action in self.user_items.keys()
@@ -112,7 +117,7 @@ class OfflineEnv(object):
                         self.fairness_constraints[group - 1]
                         / sum(self.fairness_constraints)
                     )
-                    - (self.group_count[group] / len(self.recommended_items))
+                    - (self.group_count[group] / self.total_recommended_items)
                     + 1
                 )
                 reward = rew  # 0.5 * (self.user_items[action] - 3)  # reward

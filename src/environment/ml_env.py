@@ -39,6 +39,7 @@ class OfflineEnv(object):
 
         self.movies_groups = movies_groups
         self.group_count = {}
+        self.total_recommended_items = 0
 
     def _generate_available_users(self):
         available_users = []
@@ -58,6 +59,7 @@ class OfflineEnv(object):
         self.done = False
         self.recommended_items = set(self.items)
         self.group_count.clear()
+        self.total_recommended_items = 0
         return self.user, self.items, self.done
 
     def step(self, action, top_k=False):
@@ -79,6 +81,7 @@ class OfflineEnv(object):
                 if group not in self.group_count:
                     self.group_count[group] = 0
                 self.group_count[group] += 1
+                self.total_recommended_items += 1
 
             if max(rewards) > 0:
                 self.items = (
@@ -101,6 +104,7 @@ class OfflineEnv(object):
             if group not in self.group_count:
                 self.group_count[group] = 0
             self.group_count[group] += 1
+            self.total_recommended_items += 1
 
         if (
             len(self.recommended_items) > self.done_count

@@ -221,8 +221,8 @@ class FairRecAgent:
                             np.array(
                                 [
                                     k - 1
-                                    for k, v in self.env.movies_group.items()
-                                    if v == self.env.movies_group[items]
+                                    for k, v in self.env.movies_groups.items()
+                                    if v == self.env.movies_groups[items]
                                 ]
                             )
                         )
@@ -234,7 +234,9 @@ class FairRecAgent:
                     if _group not in self.env.group_count:
                         self.env.group_count[_group] = 0
                     fairness_allocation.append(
-                        self.env.group_count[_group] / len(self.env.recommended_items)
+                        self.env.group_count[_group] / self.env.total_recommended_items
+                        if self.env.total_recommended_items > 0
+                        else 0
                     )
 
                 ## SRM state
@@ -279,8 +281,8 @@ class FairRecAgent:
                             np.array(
                                 [
                                     k - 1
-                                    for k, v in self.env.movies_group.items()
-                                    if v == self.env.movies_group[items]
+                                    for k, v in self.env.movies_groups.items()
+                                    if v == self.env.movies_groups[items]
                                 ]
                             )
                         )
@@ -292,7 +294,7 @@ class FairRecAgent:
                     if _group not in self.env.group_count:
                         self.env.group_count[_group] = 0
                     fairness_allocation.append(
-                        self.env.group_count[_group] / len(self.env.recommended_items)
+                        self.env.group_count[_group] / self.env.total_recommended_items
                     )
 
                 ## SRM state
@@ -367,20 +369,24 @@ class FairRecAgent:
                         1
                         + (
                             self.env.group_count[_group]
-                            / len(self.env.recommended_items)
+                            / self.env.total_recommended_items
                         )
                     )
-                cvr = correct_count / len(self.env.recommended_items)
+                cvr = correct_count / self.env.total_recommended_items
                 wandb.log(
-                    {"propfair": propfair, "cvr": cvr, "ufg": propfair / (1 - cvr)}
+                    {
+                        "propfair": propfair,
+                        "cvr": cvr,
+                        "ufg": propfair / max(1 - cvr, 0.01),
+                    }
                 )
 
                 print("----------")
-                print("- recommended items: ", len(self.env.recommended_items))
+                print("- recommended items: ", self.env.total_recommended_items)
                 print("- group count: ", self.env.group_count)
                 print("- propfair: ", propfair)
                 print("- cvr: ", cvr)
-                print("- ufg: ", propfair / (1 - cvr))
+                print("- ufg: ", propfair / max(1 - cvr, 0.01))
                 print("- epsilon: ", self.epsilon)
                 print("- reward: ", reward)
                 print()
@@ -426,15 +432,14 @@ class FairRecAgent:
         steps = 0
         mean_precision = 0
         mean_ndcg = 0
+        mean_cvr = 0
+        mean_propfair = 0
+        mean_ufg = 0
         # Environment
         user_id, items_ids, done = env.reset()
 
         while not done:
             # Observe current state and Find action
-            ## Embedding
-            # user_eb = self.embedding_network.get_layer("user_embedding")(
-            #     np.array(user_id)
-            # )
             items_eb = self.embedding_network.get_layer("movie_embedding")(
                 np.array(items_ids)
             )
@@ -446,8 +451,8 @@ class FairRecAgent:
                         np.array(
                             [
                                 k - 1
-                                for k, v in self.env.movies_group.items()
-                                if v == self.env.movies_group[items]
+                                for k, v in env.movies_groups.items()
+                                if v == env.movies_groups[items]
                             ]
                         )
                     )
@@ -456,10 +461,12 @@ class FairRecAgent:
             fairness_allocation = []
             for group in range(self.n_groups):
                 _group = group + 1
-                if _group not in self.env.group_count:
-                    self.env.group_count[_group] = 0
+                if _group not in env.group_count:
+                    env.group_count[_group] = 0
                 fairness_allocation.append(
-                    self.env.group_count[_group] / len(self.env.recommended_items)
+                    env.group_count[_group] / env.total_recommended_items
+                    if env.total_recommended_items > 0
+                    else 0
                 )
 
             ## SRM state
@@ -493,37 +500,34 @@ class FairRecAgent:
                 correct_num = top_k - correct_list.count(0)
                 mean_precision += correct_num / top_k
 
-            correct_count += np.count_nonzero(np.array(reward) > 0)
             reward = np.sum(reward)
             items_ids = next_items_ids
             episode_reward += reward
             steps += 1
 
             propfair = 0
-            for group in range(self.n_groups):
+            for group in range(10):
                 _group = group + 1
-                if _group not in self.env.group_count:
-                    self.env.group_count[_group] = 0
+                if _group not in env.group_count:
+                    env.group_count[_group] = 0
 
                 propfair += self.fairness_constraints[group] * math.log(
-                    1 + (self.env.group_count[_group] / len(self.env.recommended_items))
+                    1 + (env.group_count[_group] / len(recommended_item))
                 )
-            cvr = correct_count / len(self.env.recommended_items)
-            ufg = propfair / (1 - cvr)
-            wandb.log(
-                {
-                    "evaluation_propfair": propfair,
-                    "evaluation_cvr": cvr,
-                    "evaluation_ufg": ufg,
-                }
-            )
+
+            cvr = correct_num / len(recommended_item)
+            ufg = propfair / max(1 - cvr, 0.01)
+
+            mean_propfair += propfair
+            mean_cvr += cvr
+            mean_ufg += ufg
 
         return (
             mean_precision / steps,
             mean_ndcg / steps,
-            propfair / steps,
-            cvr / steps,
-            ufg / steps,
+            mean_propfair / steps,
+            mean_cvr / steps,
+            mean_ufg / steps,
         )
 
     def calculate_ndcg(self, rel, irel):

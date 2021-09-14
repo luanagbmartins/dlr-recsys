@@ -102,7 +102,9 @@ class DRRAgent:
         )
 
         self.buffer = PriorityExperienceReplay(
-            self.replay_memory_size, self.embedding_dim
+            self.replay_memory_size,
+            self.embedding_dim,
+            self.srm_size * self.embedding_dim,
         )
         self.epsilon_for_priority = 1e-6
 
@@ -310,16 +312,16 @@ class DRRAgent:
                         1
                         + (
                             self.env.group_count[_group]
-                            / len(self.env.recommended_items)
+                            / self.env.total_recommended_items
                         )
                     )
-                cvr = correct_count / len(self.env.recommended_items)
+                cvr = correct_count / self.env.total_recommended_items
                 wandb.log(
                     {"propfair": propfair, "cvr": cvr, "ufg": propfair / (1 - cvr)}
                 )
 
                 print("----------")
-                print("- recommended items: ", len(self.env.recommended_items))
+                print("- recommended items: ", self.env.total_recommended_items)
                 print("- group count: ", self.env.group_count)
                 print("- propfair: ", propfair)
                 print("- cvr: ", cvr)
@@ -369,6 +371,9 @@ class DRRAgent:
         steps = 0
         mean_precision = 0
         mean_ndcg = 0
+        mean_cvr = 0
+        mean_propfair = 0
+        mean_ufg = 0
         # Environment
         user_id, items_ids, done = env.reset()
 
@@ -408,37 +413,34 @@ class DRRAgent:
                 correct_num = top_k - correct_list.count(0)
                 mean_precision += correct_num / top_k
 
-            correct_count += np.count_nonzero(np.array(reward) > 0)
             reward = np.sum(reward)
             items_ids = next_items_ids
             episode_reward += reward
             steps += 1
 
             propfair = 0
-            for group in range(self.n_groups):
+            for group in range(10):
                 _group = group + 1
-                if _group not in self.env.group_count:
-                    self.env.group_count[_group] = 0
+                if _group not in env.group_count:
+                    env.group_count[_group] = 0
 
                 propfair += self.fairness_constraints[group] * math.log(
-                    1 + (self.env.group_count[_group] / len(self.env.recommended_items))
+                    1 + (env.group_count[_group] / len(recommended_item))
                 )
-            cvr = correct_count / len(self.env.recommended_items)
-            ufg = propfair / (1 - cvr)
-            wandb.log(
-                {
-                    "evaluation_propfair": propfair,
-                    "evaluation_cvr": cvr,
-                    "evaluation_ufg": ufg,
-                }
-            )
+
+            cvr = correct_num / len(recommended_item)
+            ufg = propfair / max(1 - cvr, 0.01)
+
+            mean_propfair += propfair
+            mean_cvr += cvr
+            mean_ufg += ufg
 
         return (
             mean_precision / steps,
             mean_ndcg / steps,
-            propfair / steps,
-            cvr / steps,
-            ufg / steps,
+            mean_propfair / steps,
+            mean_cvr / steps,
+            mean_ufg / steps,
         )
 
     def calculate_ndcg(self, rel, irel):

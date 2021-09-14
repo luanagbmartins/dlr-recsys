@@ -22,6 +22,9 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
 
     def output(self):
         return {
+            "movies_df": luigi.LocalTarget(os.path.join(self.data_dir, "movies.csv")),
+            "users_df": luigi.LocalTarget(os.path.join(self.data_dir, "users.csv")),
+            "ratings_df": luigi.LocalTarget(os.path.join(self.data_dir, "ratings.csv")),
             "train_users_dict": luigi.LocalTarget(
                 os.path.join(self.data_dir, "train_users_dict.pkl")
             ),
