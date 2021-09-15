@@ -66,7 +66,7 @@ class OfflineEnv(object):
 
     def step(self, action, top_k=False):
 
-        reward = -2
+        reward = -1.5
 
         if top_k:
             correctly_recommended = []
@@ -91,7 +91,7 @@ class OfflineEnv(object):
                     )
                     rewards.append(rew)  # 0.5 * (self.user_items[act] - 3))
                 else:
-                    rewards.append(-2)
+                    rewards.append(-1.5)
                 self.recommended_items.add(act)
 
             if max(rewards) > 0:

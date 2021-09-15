@@ -45,6 +45,8 @@ class DRLTrain(luigi.Task):
                 OUTPUT_PATH, self.train_version, self.train_id
             )
 
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
     def run(self):
         print("---------- Generate Dataset")
         dataset = yield DatasetGeneration(self.dataset_version)

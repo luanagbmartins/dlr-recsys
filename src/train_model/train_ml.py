@@ -26,6 +26,7 @@ class MovieLens(luigi.Task):
     output_path = luigi.Parameter()
 
     algorithm: str = luigi.ChoiceParameter(choices=AGENT.keys())
+    epochs: int = luigi.IntParameter(default=5)
     users_num: int = luigi.IntParameter(default=6041)
     items_num: int = luigi.IntParameter(default=3953)
     state_size: int = luigi.IntParameter(default=10)
@@ -254,7 +255,7 @@ class MovieLens(luigi.Task):
 
                 del eval_env
 
-            print("----------")
+            print("---------- Evaluation")
             print("- precision@: ", sum_precision / len(dataset["eval_users_dict"]))
             print("- ndcg@: ", sum_ndcg / len(dataset["eval_users_dict"]))
             print("- propfair: ", sum_propfair / len(dataset["eval_users_dict"]))

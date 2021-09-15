@@ -12,7 +12,7 @@ model_train:
     items_num: 1682
     state_size: 5
     srm_size: 6
-    max_eps_num: 1000
+    max_eps_num: 10000
     embedding_dim: 50
     actor_hidden_dim: 128
     actor_learning_rate: 0.001
@@ -20,6 +20,7 @@ model_train:
     critic_learning_rate: 0.001
     discount_factor: 0.9
     tau: 0.001
+    learning_starts: 1000
     replay_memory_size: 1000000
     batch_size: 32
     embedding_network_weights: user_movie_at_once.h5

@@ -38,6 +38,7 @@ class FairRecAgent:
         discount_factor=0.9,
         tau=0.001,
         replay_memory_size=1000000,
+        learning_starts=1000,
         batch_size=32,
         n_groups=4,
         fairness_constraints=[0.25, 0.25, 0.25, 0.25],
@@ -60,6 +61,7 @@ class FairRecAgent:
         self.discount_factor = discount_factor
         self.tau = tau
 
+        self.learning_starts = learning_starts
         self.replay_memory_size = replay_memory_size
         self.batch_size = batch_size
 
@@ -309,7 +311,7 @@ class FairRecAgent:
                 # buffer
                 self.buffer.append(state, action, reward, next_state, done)
 
-                if self.buffer.crt_idx > 1 or self.buffer.is_full:
+                if self.buffer.crt_idx > self.learning_starts or self.buffer.is_full:
                     # sample a minibatch
                     (
                         batch_states,
