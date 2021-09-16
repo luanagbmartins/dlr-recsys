@@ -10,6 +10,7 @@ OUTPUT_PATH = os.path.join(os.getcwd(), "data/")
 DATASETS = {
     "ml-1m": ["https://files.grouplens.org/datasets/movielens/ml-1m.zip"],
     "ml-100k": ["https://files.grouplens.org/datasets/movielens/ml-100k.zip"],
+    "ml-25m": ["https://files.grouplens.org/datasets/movielens/ml-25m.zip"],
 }
 
 

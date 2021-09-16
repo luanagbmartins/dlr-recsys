@@ -39,6 +39,7 @@ class MovieLens(luigi.Task):
     critic_learning_rate: float = luigi.FloatParameter(default=0.001)
     discount_factor: float = luigi.FloatParameter(default=0.9)
     tau: float = luigi.FloatParameter(default=0.001)
+    learning_starts: int = luigi.IntParameter(default=1000)
     replay_memory_size: int = luigi.IntParameter(default=1000000)
     batch_size: int = luigi.IntParameter(default=32)
     n_groups: int = luigi.IntParameter(default=4)
@@ -128,6 +129,7 @@ class MovieLens(luigi.Task):
             critic_learning_rate=self.critic_learning_rate,
             discount_factor=self.discount_factor,
             tau=self.tau,
+            learning_starts=self.learning_starts,
             replay_memory_size=self.replay_memory_size,
             batch_size=self.batch_size,
             model_path=self.output_path,

@@ -4,12 +4,18 @@ import yaml
 import json
 import datetime as dt
 
-from src.data.datasets import ML1MLoadAndPrepareDataset, ML100kLoadAndPrepareDataset
+from src.data.datasets import (
+    ML1MLoadAndPrepareDataset,
+    ML100kLoadAndPrepareDataset,
+    ML25MLoadAndPrepareDataset,
+)
 
 
 ## Available versions of the GenerateDataset subtasks
 DATASETS = dict(
-    movie_lens_1m=ML1MLoadAndPrepareDataset, movie_lens_100k=ML100kLoadAndPrepareDataset
+    movie_lens_1m=ML1MLoadAndPrepareDataset,
+    movie_lens_100k=ML100kLoadAndPrepareDataset,
+    movie_lens_25m=ML25MLoadAndPrepareDataset,
 )
 
 OUTPUT_PATH = os.path.join(os.getcwd(), "data/")

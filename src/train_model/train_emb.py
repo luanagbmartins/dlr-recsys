@@ -34,7 +34,7 @@ class MLEmbedding(luigi.Task):
 
         if self.use_wandb:
             wandb.init(
-                project=str("emb_" + self.train_version),
+                project=self.train_version,
                 config={
                     "users_num": self.users_num,
                     "items_num": self.items_num,
@@ -57,8 +57,11 @@ class MLEmbedding(luigi.Task):
 
         dataset = {}
         dataset["movies_df"] = pd.read_csv(_dataset_path["movies_df"])
-        dataset["users_df"] = pd.read_csv(_dataset_path["users_df"])
         dataset["ratings_df"] = pd.read_csv(_dataset_path["ratings_df"])
+
+        dataset["movies_df"]["movie_id"] = dataset["movies_df"]["movie_id"] - 1
+        dataset["ratings_df"]["movie_id"] = dataset["ratings_df"]["movie_id"] - 1
+        dataset["ratings_df"]["user_id"] = dataset["ratings_df"]["user_id"] - 1
 
         return dataset
 
@@ -76,7 +79,7 @@ class MLEmbedding(luigi.Task):
         )
         u_m_pairs = modified_user_movie_rating_df.to_numpy()
         positive_user_movie_dict = {
-            u: [] for u in range(1, max(modified_user_movie_rating_df["user_id"]) + 1)
+            u: [] for u in range(0, max(modified_user_movie_rating_df["user_id"]) + 1)
         }
         for data in modified_user_movie_rating_df.iterrows():
             positive_user_movie_dict[data[1][0]].append(data[1][1])

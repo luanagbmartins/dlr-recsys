@@ -335,7 +335,7 @@ class DRRAgent:
                     print("----------")
                     print("- precision: ", precision)
                     print("- total_reward: ", episode_reward)
-                    print("- q_loss: ", q_loss.numpy() / steps)
+                    print("- q_loss: ", q_loss / steps)
                     print("- mean_action: ", mean_action / steps)
                     print()
                     if self.use_wandb:

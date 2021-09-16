@@ -5,24 +5,23 @@ emb_train:
     users_num: 943
     items_num: 1682
     embedding_dim: 50
-
 model_train:
     algorithm: "fairrec"
-    users_num: 943
-    items_num: 1682
+    users_num: 6041
+    items_num: 3953
     state_size: 5
-    srm_size: 2
+    srm_size: 3
     max_eps_num: 10000
     embedding_dim: 50
     actor_hidden_dim: 128
-    actor_learning_rate: 0.001
+    actor_learning_rate: 0.0001
     critic_hidden_dim: 128
     critic_learning_rate: 0.001
     discount_factor: 0.9
     tau: 0.001
-    learning_starts: 1000
+    learning_starts: 5000
     replay_memory_size: 1000000
-    batch_size: 32
+    batch_size: 64
     embedding_network_weights: user_movie_at_once.h5
     n_groups: 10
     fairness_constraints: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]

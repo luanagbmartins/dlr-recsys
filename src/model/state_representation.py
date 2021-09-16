@@ -46,6 +46,10 @@ class FairRecStateRepresentation(tf.keras.Model):
         # attention_weights = tf.nn.softmax(score, axis=1)
         # ups = attention_weights * items
         ups = self.attention([items, items])
+
+        ups = tf.transpose(ups, perm=(0, 2, 1))  # / self.embedding_dim
+        ups = self.wav(ups)
+        ups = tf.transpose(ups, perm=(0, 2, 1))
         fs = self.fav(x[2])
 
         concat = self.concat([ups, np.expand_dims(fs, axis=0)])
