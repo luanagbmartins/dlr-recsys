@@ -10,7 +10,7 @@ from ..utils import DownloadDataset
 
 class ML1MLoadAndPrepareDataset(luigi.Task):
     output_path: str = luigi.Parameter(default=os.path.join(os.getcwd(), "data/"))
-    n_groups: int = luigi.Parameter(default=4)
+    n_groups: int = luigi.IntParameter(default=4)
 
     def __init__(self, *args, **kwargs):
         super(ML1MLoadAndPrepareDataset, self).__init__(*args, **kwargs)
@@ -42,6 +42,9 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
             ),
             "movies_id_to_movies": luigi.LocalTarget(
                 os.path.join(self.data_dir, "movies_id_to_movies.pkl")
+            ),
+            "movies_genres_id": luigi.LocalTarget(
+                os.path.join(self.data_dir, "movies_genres_id.pkl")
             ),
             "movies_groups": luigi.LocalTarget(
                 os.path.join(self.data_dir, "movies_groups.pkl")
@@ -82,6 +85,11 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
             users_list, columns=["user_id", "gender", "age", "occupation", "zip_code"]
         )
 
+        ratings_df["user_id"] = ratings_df["user_id"].astype("int")
+        ratings_df["movie_id"] = ratings_df["movie_id"].astype("int")
+        users_df["user_id"] = users_df["user_id"].astype("int")
+        movies_df["movie_id"] = movies_df["movie_id"].astype("int")
+
         ratings_df["user_id"] = ratings_df["user_id"] - 1
         users_df["user_id"] = users_df["user_id"] - 1
         ratings_df["movie_id"] = ratings_df["movie_id"] - 1
@@ -102,9 +110,19 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
             row[0]: row[1:] for index, row in datasets["movies"].iterrows()
         }
         movies_groups = {
-            row[0]: random.randint(1, self.n_groups)
-            for index, row in datasets["movies"].iterrows()
+            index: random.randint(1, self.n_groups)
+            for index in range(0, max(datasets["movies"]["movie_id"]) + 1)
         }
+
+        datasets["movies"]["genres"] = datasets["movies"]["genres"].map(
+            lambda x: self._split_and_index(x)
+        )
+        print(datasets["movies"].head())
+        movies_genres_id = {
+            row[0]: row[2] for index, row in datasets["movies"].iterrows()
+        }
+        print(movies_genres_id)
+
         datasets["ratings"] = datasets["ratings"].applymap(int)
 
         users_dict = {user: [] for user in set(datasets["ratings"]["user_id"])}
@@ -164,5 +182,34 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
         with open(self.output()["movies_id_to_movies"].path, "wb") as file:
             pickle.dump(movies_id_to_movies, file)
 
+        with open(self.output()["movies_genres_id"].path, "wb") as file:
+            pickle.dump(movies_genres_id, file)
+
         with open(self.output()["movies_groups"].path, "wb") as file:
             pickle.dump(movies_groups, file)
+
+    def _split_and_index(self, string):
+        genres = [
+            "Action",
+            "Adventure",
+            "Animation",
+            "Children's",
+            "Comedy",
+            "Crime",
+            "Documentary",
+            "Drama",
+            "Fantasy",
+            "Film-Noir",
+            "Horror",
+            "Musical",
+            "Mystery",
+            "Romance",
+            "Sci-Fi",
+            "Thriller",
+            "War",
+            "Western",
+        ]
+        string = string.split("|")
+        for i, s in enumerate(string):
+            string[i] = genres.index(s)
+        return string

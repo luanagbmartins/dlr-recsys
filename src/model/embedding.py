@@ -30,6 +30,30 @@ class MovieGenreEmbedding(tf.keras.Model):
         return self.m_g_fc(m_g)
 
 
+class UserMovieGenreEmbedding(tf.keras.Model):
+    def __init__(self, len_users, embedding_dim):
+        super(UserMovieGenreEmbedding, self).__init__()
+        self.m_u_input = tf.keras.layers.InputLayer(
+            name="input_layer", input_shape=(2,)
+        )
+        # embedding
+        self.u_embedding = tf.keras.layers.Embedding(
+            name="user_embedding", input_dim=len_users, output_dim=embedding_dim
+        )
+        # dot product
+        self.m_u_merge = tf.keras.layers.Dot(
+            name="movie_user_dot", normalize=False, axes=1
+        )
+        # output
+        self.m_u_fc = tf.keras.layers.Dense(1, activation="sigmoid")
+
+    def call(self, x):
+        x = self.m_u_input(x)
+        uemb = self.u_embedding(x[0])
+        m_u = self.m_u_merge([x[1], uemb])
+        return self.m_u_fc(m_u)
+
+
 class UserMovieEmbedding(tf.keras.Model):
     def __init__(self, len_users, len_movies, embedding_dim):
         super(UserMovieEmbedding, self).__init__()

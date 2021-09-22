@@ -16,7 +16,12 @@ from src.train_model import MovieLens, MLEmbedding
 
 OUTPUT_PATH = os.path.join(os.getcwd(), "model")
 
-TRAINER = dict(movie_lens_100k=MovieLens, movie_lens_100k_fair=MovieLens)
+TRAINER = dict(
+    movie_lens_100k=MovieLens,
+    movie_lens_100k_fair=MovieLens,
+    movie_lens_1m=MovieLens,
+    movie_lens_1m_fair=MovieLens,
+)
 
 
 class DRLTrain(luigi.Task):
@@ -45,8 +50,6 @@ class DRLTrain(luigi.Task):
                 OUTPUT_PATH, self.train_version, self.train_id
             )
 
-        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
     def run(self):
         print("---------- Generate Dataset")
         dataset = yield DatasetGeneration(self.dataset_version)
@@ -54,6 +57,11 @@ class DRLTrain(luigi.Task):
         print("---------- Train Embedding")
         emb = yield MLEmbedding(
             **self.train_config["emb_train"],
+            users_num=self.train_config["users_num"],
+            items_num=self.train_config["items_num"],
+            genres_num=self.train_config["genres_num"],
+            embedding_dim=self.train_config["embedding_dim"],
+            emb_model=self.train_config["emb_model"],
             output_path=self.output_path,
             train_version=self.train_version,
             dataset_path=dataset.path,
@@ -63,6 +71,12 @@ class DRLTrain(luigi.Task):
         print("---------- Train Model")
         train = yield TRAINER[self.train_version](
             **self.train_config["model_train"],
+            users_num=self.train_config["users_num"],
+            items_num=self.train_config["items_num"],
+            genres_num=self.train_config["genres_num"],
+            embedding_dim=self.train_config["embedding_dim"],
+            emb_model=self.train_config["emb_model"],
+            embedding_network_weights=emb.path,
             output_path=self.output_path,
             train_version=self.train_version,
             use_wandb=self.use_wandb,

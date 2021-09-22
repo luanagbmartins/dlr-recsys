@@ -9,6 +9,7 @@ class OfflineEnv(object):
         movies_id_to_movies,
         movies_groups,
         state_size,
+        fairness_constraints,
         fix_user_id=None,
     ):
 
@@ -40,6 +41,7 @@ class OfflineEnv(object):
         self.movies_groups = movies_groups
         self.group_count = {}
         self.total_recommended_items = 0
+        self.fairness_constraints = fairness_constraints
 
     def _generate_available_users(self):
         available_users = []
@@ -122,3 +124,97 @@ class OfflineEnv(object):
             except:
                 items_names.append(list(["Not in list"]))
         return items_names
+
+
+class OfflineFairEnv(OfflineEnv):
+    def __init__(
+        self,
+        users_dict,
+        users_history_lens,
+        movies_id_to_movies,
+        movies_groups,
+        state_size,
+        fairness_constraints,
+        fix_user_id=None,
+    ):
+        super().__init__(
+            users_dict,
+            users_history_lens,
+            movies_id_to_movies,
+            movies_groups,
+            state_size,
+            fairness_constraints,
+            fix_user_id,
+        )
+
+    def step(self, action, top_k=False):
+
+        reward = -1.5
+
+        if top_k:
+            correctly_recommended = []
+            rewards = []
+            for act in action:
+
+                if act in self.movies_groups.keys():
+                    group = self.movies_groups[act]
+                    if group not in self.group_count:
+                        self.group_count[group] = 0
+                    self.group_count[group] += 1
+                    self.total_recommended_items += 1
+
+                if act in self.user_items.keys() and act not in self.recommended_items:
+                    correctly_recommended.append(act)
+
+                    rew = (
+                        (
+                            self.fairness_constraints[group - 1]
+                            / sum(self.fairness_constraints)
+                        )
+                        - (self.group_count[group] / self.total_recommended_items)
+                        + 1
+                    )
+                    rewards.append(rew)  # 0.5 * (self.user_items[act] - 3))
+                else:
+                    rewards.append(-1.5)
+                self.recommended_items.add(act)
+
+            if max(rewards) > 0:
+                self.items = (
+                    self.items[len(correctly_recommended) :] + correctly_recommended
+                )
+                self.items = self.items[-self.state_size :]
+            reward = rewards
+
+        else:
+            if action in self.movies_groups.keys():
+                group = self.movies_groups[action]
+                if group not in self.group_count:
+                    self.group_count[group] = 0
+                self.group_count[group] += 1
+                self.total_recommended_items += 1
+
+            if (
+                action in self.user_items.keys()
+                and action not in self.recommended_items
+            ):
+                rew = (
+                    (
+                        self.fairness_constraints[group - 1]
+                        / sum(self.fairness_constraints)
+                    )
+                    - (self.group_count[group] / self.total_recommended_items)
+                    + 1
+                )
+                reward = rew  # 0.5 * (self.user_items[action] - 3)  # reward
+            if reward >= 0:
+                self.items = self.items[1:] + [action]
+            self.recommended_items.add(action)
+
+        if (
+            len(self.recommended_items) > self.done_count
+            or len(self.recommended_items) >= self.users_history_lens[self.user - 1]
+        ):
+            self.done = True
+
+        return self.items, reward, self.done, self.recommended_items

@@ -1,18 +1,18 @@
+users_num: 6040
+items_num: 3952
+genres_num: 18
+embedding_dim: 50
+emb_model: "user-movie"
 emb_train:
     max_epoch: 150
     init_user_batch_size: 32
     final_user_batch_size: 1024
-    users_num: 162542
-    items_num: 209172
-    embedding_dim: 50
+    movie_batch_size: 0
 model_train:
     algorithm: "fairrec"
-    users_num: 6041
-    items_num: 3953
     state_size: 5
-    srm_size: 3
+    srm_size: 2
     max_eps_num: 10000
-    embedding_dim: 50
     actor_hidden_dim: 128
     actor_learning_rate: 0.0001
     critic_hidden_dim: 128
@@ -22,6 +22,5 @@ model_train:
     learning_starts: 5000
     replay_memory_size: 1000000
     batch_size: 64
-    embedding_network_weights: user_movie_at_once.h5
     n_groups: 10
     fairness_constraints: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]

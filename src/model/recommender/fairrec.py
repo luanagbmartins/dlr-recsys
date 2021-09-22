@@ -88,7 +88,9 @@ class FairRecAgent:
             users_num, items_num, self.embedding_dim
         )
         self.embedding_network([np.zeros((1,)), np.zeros((1,))])
-        self.embedding_network.load_weights(self.embedding_network_weights_path)
+        self.embedding_network.load_weights(
+            "model/movie_lens_1m_fair/movie_lens_1m_fair_2021-09-16_13-46-33/user_movie.h5"
+        )  # self.embedding_network_weights_path)
 
         self.srm_ave = FairRecStateRepresentation(self.embedding_dim, self.n_groups)
         self.srm_ave(

@@ -1,6 +1,7 @@
 import os
 import math
 from tqdm import tqdm
+import json
 from src.model.replay_buffer import PriorityExperienceReplay
 import tensorflow as tf
 import numpy as np
@@ -9,7 +10,11 @@ from tensorflow.python.ops.gen_math_ops import Exp
 from src.model.actor import Actor
 from src.model.critic import Critic
 from src.model.replay_memory import ReplayMemory
-from src.model.embedding import MovieGenreEmbedding, UserMovieEmbedding
+from src.model.embedding import (
+    UserMovieEmbedding,
+    MovieGenreEmbedding,
+    UserMovieGenreEmbedding,
+)
 from src.model.state_representation import DRRAveStateRepresentation
 
 import matplotlib.pyplot as plt
@@ -23,10 +28,13 @@ class DRRAgent:
         env,
         users_num,
         items_num,
+        genre_num,
+        movies_genres_id,
         state_size,
         srm_size,
         model_path,
         embedding_network_weights_path,
+        emb_model,
         train_version,
         is_test=False,
         use_wandb=False,
@@ -37,6 +45,7 @@ class DRRAgent:
         critic_learning_rate=0.001,
         discount_factor=0.9,
         tau=0.001,
+        learning_starts=1000,
         replay_memory_size=1000000,
         batch_size=32,
         n_groups=4,
@@ -47,9 +56,14 @@ class DRRAgent:
 
         self.users_num = users_num
         self.items_num = items_num
+        self.genres_num = genres_num
 
         self.model_path = model_path
-        self.embedding_network_weights_path = embedding_network_weights_path
+
+        self.emb_model = emb_model
+
+        with open(embedding_network_weights_path) as json_file:
+            self.embedding_network_weights_path = json.load(json_file)
 
         self.embedding_dim = embedding_dim
         self.srm_size = srm_size
@@ -82,11 +96,34 @@ class DRRAgent:
             self.tau,
         )
 
-        self.embedding_network = UserMovieEmbedding(
-            users_num, items_num, self.embedding_dim
-        )
-        self.embedding_network([np.zeros((1,)), np.zeros((1,))])
-        self.embedding_network.load_weights(self.embedding_network_weights_path)
+        if self.emb_model == "user-movie":
+            embedding_network = UserMovieEmbedding(
+                users_num, items_num, self.embedding_dim
+            )
+            embedding_network([np.zeros((1,)), np.zeros((1,))])
+            embedding_network.load_weights(
+                self.embedding_network_weights_path["user-movie"]
+            )
+
+            self.movie_embedding = embedding_network.get_layer("movie_embedding")
+            self.user_embedding = embedding_network.get_layer("user_embedding")
+        else:
+            user_embedding_network = UserMovieGenreEmbedding(
+                users_num, items_num, self.embedding_dim
+            )
+            user_embedding_network([np.zeros((1,)), np.zeros((1,))])
+            user_embedding_network.load_weights(
+                self.embedding_network_weights_path["user-movie-genre"]
+            )
+            self.user_embedding = user_embedding_network.get_layer("user_embedding")
+
+            self.movie_embedding = MovieGenreEmbedding(
+                items_num, genre_num, self.embedding_dim
+            )
+            self.movie_embedding([np.zeros((1,)), np.zeros((1,))])
+            self.movie_embedding.load_weights(
+                self.embedding_network_weights_path["movie-genre"]
+            )
 
         self.srm_ave = DRRAveStateRepresentation(self.embedding_dim)
         self.srm_ave(
@@ -149,7 +186,7 @@ class DRRAgent:
                 list(set(i for i in range(self.items_num)) - recommended_items)
             )
 
-        items_ebs = self.embedding_network.get_layer("movie_embedding")(items_ids)
+        items_ebs = self.movie_embedding(items_ids)
         action = tf.transpose(action, perm=(1, 0))
         if top_k:
             item_indice = np.argsort(
@@ -205,12 +242,17 @@ class DRRAgent:
 
             while not done:
                 # observe current state & Find action
-                user_eb = self.embedding_network.get_layer("user_embedding")(
-                    np.array(user_id)
-                )
-                items_eb = self.embedding_network.get_layer("movie_embedding")(
-                    np.array(items_ids)
-                )
+                user_eb = self.user_embedding(np.array(user_id))
+
+                if self.emb_model == "user-movie":
+                    items_eb = self.movie_embedding(np.array(items_ids))
+                else:
+                    genres = []
+                    for item in items_eb:
+                        genres.append(self.movies_genres_id[item])
+                    items_eb = self.movie_embedding(
+                        np.array(items_ids), np.array(genres)
+                    )
 
                 ## SRM state
                 state = self.srm_ave(
@@ -239,9 +281,7 @@ class DRRAgent:
                     reward = np.sum(reward)
 
                 # get next_state
-                next_items_eb = self.embedding_network.get_layer("movie_embedding")(
-                    np.array(next_items_ids)
-                )
+                next_items_eb = self.movie_embedding(np.array(next_items_ids))
                 next_state = self.srm_ave(
                     [
                         np.expand_dims(user_eb, axis=0),
@@ -252,7 +292,7 @@ class DRRAgent:
                 # buffer
                 self.buffer.append(state, action, reward, next_state, done)
 
-                if self.buffer.crt_idx > 1 or self.buffer.is_full:
+                if self.buffer.crt_idx > self.learning_starts or self.buffer.is_full:
                     # sample a minibatch
                     (
                         batch_states,
@@ -317,7 +357,11 @@ class DRRAgent:
                     )
                 cvr = correct_count / self.env.total_recommended_items
                 wandb.log(
-                    {"propfair": propfair, "cvr": cvr, "ufg": propfair / (1 - cvr)}
+                    {
+                        "propfair": propfair,
+                        "cvr": cvr,
+                        "ufg": propfair / max(1 - cvr, 0.01),
+                    }
                 )
 
                 print("----------")
@@ -325,7 +369,7 @@ class DRRAgent:
                 print("- group count: ", self.env.group_count)
                 print("- propfair: ", propfair)
                 print("- cvr: ", cvr)
-                print("- ufg: ", propfair / (1 - cvr))
+                print("- ufg: ", propfair / max(1 - cvr, 0.01))
                 print("- epsilon: ", self.epsilon)
                 print("- reward: ", reward)
                 print()
@@ -380,12 +424,15 @@ class DRRAgent:
         while not done:
             # Observe current state and Find action
             ## Embedding
-            user_eb = self.embedding_network.get_layer("user_embedding")(
-                np.array(user_id)
-            )
-            items_eb = self.embedding_network.get_layer("movie_embedding")(
-                np.array(items_ids)
-            )
+            user_eb = self.user_embedding(np.array(user_id))
+
+            if self.emb_model == "user-movie":
+                items_eb = self.movie_embedding(np.array(items_ids))
+            else:
+                genres = []
+                for item in items_eb:
+                    genres.append(self.movies_genres_id[item])
+                items_eb = self.movie_embedding(np.array(items_ids), np.array(genres))
             ## SRM state
             state = self.srm_ave(
                 [np.expand_dims(user_eb, axis=0), np.expand_dims(items_eb, axis=0)]
