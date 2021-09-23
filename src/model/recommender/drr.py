@@ -28,7 +28,7 @@ class DRRAgent:
         env,
         users_num,
         items_num,
-        genre_num,
+        genres_num,
         movies_genres_id,
         state_size,
         srm_size,
@@ -80,6 +80,8 @@ class DRRAgent:
         self.n_groups = n_groups
         self.fairness_constraints = fairness_constraints
 
+        self.movies_genres_id = movies_genres_id
+        
         self.actor = Actor(
             self.embedding_dim,
             self.srm_size,
@@ -97,32 +99,28 @@ class DRRAgent:
         )
 
         if self.emb_model == "user-movie":
-            embedding_network = UserMovieEmbedding(
+            self.embedding_network = UserMovieEmbedding(
                 users_num, items_num, self.embedding_dim
             )
-            embedding_network([np.zeros((1,)), np.zeros((1,))])
-            embedding_network.load_weights(
+            self.embedding_network([np.zeros((1,)), np.zeros((1,))])
+            self.embedding_network.load_weights(
                 self.embedding_network_weights_path["user-movie"]
             )
-
-            self.movie_embedding = embedding_network.get_layer("movie_embedding")
-            self.user_embedding = embedding_network.get_layer("user_embedding")
         else:
-            user_embedding_network = UserMovieGenreEmbedding(
-                users_num, items_num, self.embedding_dim
+            self.embedding_network = UserMovieGenreEmbedding(
+                users_num, self.embedding_dim
             )
-            user_embedding_network([np.zeros((1,)), np.zeros((1,))])
-            user_embedding_network.load_weights(
-                self.embedding_network_weights_path["user-movie-genre"]
+            self.embedding_network([np.zeros((1)), np.zeros((1, self.embedding_dim))])
+            self.embedding_network.load_weights(
+                self.embedding_network_weights_path["user_movie_genre"]
             )
-            self.user_embedding = user_embedding_network.get_layer("user_embedding")
-
-            self.movie_embedding = MovieGenreEmbedding(
-                items_num, genre_num, self.embedding_dim
+            
+            self.movie_embedding_network = MovieGenreEmbedding(
+                items_num, genres_num, self.embedding_dim
             )
-            self.movie_embedding([np.zeros((1,)), np.zeros((1,))])
-            self.movie_embedding.load_weights(
-                self.embedding_network_weights_path["movie-genre"]
+            self.movie_embedding_network([np.zeros((1)), np.zeros((1))])
+            self.movie_embedding_network.load_weights(
+                self.embedding_network_weights_path["movie_genre"]
             )
 
         self.srm_ave = DRRAveStateRepresentation(self.embedding_dim)
@@ -186,7 +184,8 @@ class DRRAgent:
                 list(set(i for i in range(self.items_num)) - recommended_items)
             )
 
-        items_ebs = self.movie_embedding(items_ids)
+        items_ebs = self.get_items_emb(items_ids)
+
         action = tf.transpose(action, perm=(1, 0))
         if top_k:
             item_indice = np.argsort(
@@ -196,6 +195,34 @@ class DRRAgent:
         else:
             item_idx = np.argmax(tf.keras.backend.dot(items_ebs, action))
             return items_ids[item_idx]
+
+    def get_items_emb(self, items_ids):
+        
+        if self.emb_model == "user-movie":
+            items_eb = self.embedding_network.get_layer('movie_embedding')(np.array(items_ids))
+        else:
+            genres = []
+            for item in items_ids:
+                genres.append(self.movies_genres_id[item])
+
+            items_eb = self.movie_embedding_network.get_layer('movie_embedding')(np.array(items_ids))
+            
+
+            genres_eb = []
+            for items in items_ids:
+                ge = self.movie_embedding_network.get_layer("genre_embedding")(
+                    np.array(self.movies_genres_id[items])
+                )
+                genres_eb.append(ge)                
+            genre_mean = []
+            for g in genres_eb:
+                genre_mean.append(tf.reduce_mean(g / self.embedding_dim, axis=0))
+            genre_mean = tf.stack(genre_mean)
+            
+            items_eb = tf.add(items_eb, genre_mean)  
+
+        return items_eb
+
 
     def train(self, max_episode_num, top_k=False, load_model=False):
         self.actor.update_target_network()
@@ -242,18 +269,9 @@ class DRRAgent:
 
             while not done:
                 # observe current state & Find action
-                user_eb = self.user_embedding(np.array(user_id))
-
-                if self.emb_model == "user-movie":
-                    items_eb = self.movie_embedding(np.array(items_ids))
-                else:
-                    genres = []
-                    for item in items_eb:
-                        genres.append(self.movies_genres_id[item])
-                    items_eb = self.movie_embedding(
-                        np.array(items_ids), np.array(genres)
-                    )
-
+                user_eb = self.embedding_network.get_layer('user_embedding')(np.array(user_id))
+                items_eb = self.get_items_emb(items_ids)
+               
                 ## SRM state
                 state = self.srm_ave(
                     [np.expand_dims(user_eb, axis=0), np.expand_dims(items_eb, axis=0)]
@@ -281,7 +299,8 @@ class DRRAgent:
                     reward = np.sum(reward)
 
                 # get next_state
-                next_items_eb = self.movie_embedding(np.array(next_items_ids))
+                next_items_eb = self.get_items_emb(items_ids)
+
                 next_state = self.srm_ave(
                     [
                         np.expand_dims(user_eb, axis=0),
@@ -424,15 +443,9 @@ class DRRAgent:
         while not done:
             # Observe current state and Find action
             ## Embedding
-            user_eb = self.user_embedding(np.array(user_id))
+            user_eb = self.embedding_network.get_layer('user_embedding')(np.array(user_id))
+            items_eb = self.get_items_emb(items_ids)
 
-            if self.emb_model == "user-movie":
-                items_eb = self.movie_embedding(np.array(items_ids))
-            else:
-                genres = []
-                for item in items_eb:
-                    genres.append(self.movies_genres_id[item])
-                items_eb = self.movie_embedding(np.array(items_ids), np.array(genres))
             ## SRM state
             state = self.srm_ave(
                 [np.expand_dims(user_eb, axis=0), np.expand_dims(items_eb, axis=0)]

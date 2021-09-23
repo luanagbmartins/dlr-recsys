@@ -67,7 +67,7 @@ class MovieLens(luigi.Task):
 
     def run(self):
         dataset = self.load_data()
-        # self.train_model(dataset)
+        self.train_model(dataset)
 
         if self.evaluate:
             self.evaluate_model(dataset)
@@ -89,8 +89,8 @@ class MovieLens(luigi.Task):
             dataset["users_history_lens"] = pickle.load(pkl_file)
         with open(_dataset_path["movies_id_to_movies"], "rb") as pkl_file:
             dataset["movies_id_to_movies"] = pickle.load(pkl_file)
-        # with open(_dataset_path["movies_genres_id"], "rb") as pkl_file:
-        #     dataset["movies_genres_id"] = pickle.load(pkl_file)
+        with open(_dataset_path["movies_genres_id"], "rb") as pkl_file:
+            dataset["movies_genres_id"] = pickle.load(pkl_file)
         with open(_dataset_path["movies_groups"], "rb") as pkl_file:
             dataset["movies_groups"] = pickle.load(pkl_file)
 
@@ -114,7 +114,7 @@ class MovieLens(luigi.Task):
             users_num=self.users_num,
             items_num=self.items_num,
             genres_num=self.genres_num,
-            movies_genres_id={},  # dataset["movies_genres_id"],
+            movies_genres_id=dataset["movies_genres_id"],
             srm_size=self.srm_size,
             state_size=self.state_size,
             train_version=self.train_version,

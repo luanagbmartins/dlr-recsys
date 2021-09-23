@@ -4,6 +4,7 @@ import pickle
 import pandas as pd
 import numpy as np
 import random
+from sklearn import preprocessing
 
 from ..utils import DownloadDataset
 
@@ -90,10 +91,18 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
         users_df["user_id"] = users_df["user_id"].astype("int")
         movies_df["movie_id"] = movies_df["movie_id"].astype("int")
 
-        ratings_df["user_id"] = ratings_df["user_id"] - 1
-        users_df["user_id"] = users_df["user_id"] - 1
-        ratings_df["movie_id"] = ratings_df["movie_id"] - 1
-        movies_df["movie_id"] = movies_df["movie_id"] - 1
+
+        movies_encoder = preprocessing.LabelEncoder()
+        movies_encoder.fit(movies_df["movie_id"].values)
+
+        movies_df["movie_id"] = movies_encoder.transform(movies_df["movie_id"].values)
+        ratings_df["movie_id"] = movies_encoder.transform(ratings_df["movie_id"].values)
+
+        users_encoder = preprocessing.LabelEncoder()
+        users_encoder.fit(users_df["user_id"].values)
+
+        users_df["user_id"] = users_encoder.transform(users_df["user_id"].values)
+        ratings_df["user_id"] = users_encoder.transform(ratings_df["user_id"].values)
 
         datasets = {"ratings": ratings_df, "movies": movies_df, "users": users_df}
         for dataset in datasets:
@@ -117,11 +126,9 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
         datasets["movies"]["genres"] = datasets["movies"]["genres"].map(
             lambda x: self._split_and_index(x)
         )
-        print(datasets["movies"].head())
         movies_genres_id = {
             row[0]: row[2] for index, row in datasets["movies"].iterrows()
         }
-        print(movies_genres_id)
 
         datasets["ratings"] = datasets["ratings"].applymap(int)
 

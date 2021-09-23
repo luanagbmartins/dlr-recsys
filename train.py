@@ -81,7 +81,7 @@ class DRLTrain(luigi.Task):
             train_version=self.train_version,
             use_wandb=self.use_wandb,
             load_model=self.load_model,
-            dataset_path=dataset.path,
+            dataset_path="data/movie_lens_1m_output_path.json",
             evaluate=self.evaluate,
         )
 

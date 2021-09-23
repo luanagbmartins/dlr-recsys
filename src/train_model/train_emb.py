@@ -93,8 +93,6 @@ class MLEmbedding(luigi.Task):
             "Western",
         ]
 
-        print(dataset["movies_df"].head())
-
         positive_m_g_pairs = []
         negative_m_g_pairs = []
         for movie in dataset["movies_df"]["movie_id"]:
@@ -147,7 +145,7 @@ class MLEmbedding(luigi.Task):
 
             for step in range(movie_step_per_epoch):
                 m_batch, g_batch, m_g_label_batch = next(m_g_generator)
-                self.train_step(
+                self.mg_train_step(
                     m_g_model,
                     bce,
                     optimizer,
@@ -174,7 +172,7 @@ class MLEmbedding(luigi.Task):
                     )
 
         u_m_model = UserMovieGenreEmbedding(self.users_num, self.embedding_dim)
-        u_m_model([np.zeros((1)), np.zeros((1, 100))])
+        u_m_model([np.zeros((1)), np.zeros((1, self.embedding_dim))])
         print(u_m_model.summary())
 
         optimizer = tf.keras.optimizers.Adam()
@@ -188,12 +186,34 @@ class MLEmbedding(luigi.Task):
             batch_size = self.init_user_batch_size * (epoch + 1)
             if batch_size > self.final_user_batch_size:
                 batch_size = self.final_user_batch_size
-            u_m_generator = generate_user_movie_batch(u_m_pairs, batch_size)
-
+            u_m_generator = self.generate_user_movie_batch(
+                u_m_pairs,
+                batch_size,
+                modified_user_movie_rating_df,
+                positive_user_movie_dict,
+            )
             for step in range(len(user_movie_rating_df) // batch_size):
                 u_batch, m_batch, u_m_label_batch = next(u_m_generator)
-                m_batch = m_g_model.get_layer("movie_embedding")(m_batch)
-                self.train_step(
+                # m_batch = m_g_model.get_layer("movie_embedding")(m_batch)
+
+                genres = []
+                for item in m_batch:
+                    genres.append(dataset["movies_genres_id"][item])
+
+                items_eb = m_g_model.get_layer('movie_embedding')(np.array(m_batch))
+                genres_eb = []
+                for items in m_batch:
+                    ge = m_g_model.get_layer("genre_embedding")(
+                        np.array(dataset["movies_genres_id"][items])
+                    )
+                    genres_eb.append(ge)                
+                genre_mean = []
+                for g in genres_eb:
+                    genre_mean.append(tf.reduce_mean(g / self.embedding_dim, axis=0))
+                genre_mean = tf.stack(genre_mean)
+                
+                m_batch = tf.add(items_eb, genre_mean)  
+                self.um_train_step(
                     u_m_model,
                     bce,
                     optimizer,
@@ -223,7 +243,7 @@ class MLEmbedding(luigi.Task):
         u_m_model.save_weights(os.path.join(self.output_path, "user_movie_genre.h5"))
         _output = {
             "movie_genre": os.path.join(self.output_path, "movie_genre.h5"),
-            "user_movie_genre": os.path.join(self.output_path, "movie_genre.h5"),
+            "user_movie_genre": os.path.join(self.output_path, "user_movie_genre.h5"),
         }
         with open(self.output().path, "w") as file:
             json.dump(_output, file)
@@ -272,7 +292,7 @@ class MLEmbedding(luigi.Task):
             for step in range(len(user_movie_rating_df) // batch_size):
                 u_batch, m_batch, u_m_label_batch = next(test_generator)
 
-                self.train_step(
+                self.um_train_step(
                     model,
                     bce,
                     optimizer,
@@ -356,7 +376,20 @@ class MLEmbedding(luigi.Task):
             yield batch[:, 0], batch[:, 1], batch[:, 2]
 
     @tf.function
-    def train_step(
+    def um_train_step(
+        self, model, bce, optimizer, inputs, labels, train_loss, train_accuracy
+    ):
+        with tf.GradientTape() as tape:
+            predictions = model(inputs, training=True)
+            loss = bce(labels, predictions)
+        gradients = tape.gradient(loss, model.trainable_variables)
+        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+
+        train_loss(loss)
+        train_accuracy(labels, predictions)
+
+    @tf.function
+    def mg_train_step(
         self, model, bce, optimizer, inputs, labels, train_loss, train_accuracy
     ):
         with tf.GradientTape() as tape:
