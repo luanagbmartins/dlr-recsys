@@ -2,7 +2,7 @@ users_num: 6040
 items_num: 3883
 genres_num: 18
 embedding_dim: 50
-emb_model: "user-movie"
+emb_model: "user_movie"
 emb_train:
     max_epoch: 150
     init_user_batch_size: 32
@@ -12,7 +12,7 @@ model_train:
     algorithm: "fairrec"
     state_size: 5
     srm_size: 2
-    max_eps_num: 10000
+    max_eps_num: 8000
     actor_hidden_dim: 128
     actor_learning_rate: 0.0001
     critic_hidden_dim: 128

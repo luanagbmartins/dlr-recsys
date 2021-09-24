@@ -99,13 +99,13 @@ class DRRAgent:
             self.tau,
         )
 
-        if self.emb_model == "user-movie":
+        if self.emb_model == "user_movie":
             self.embedding_network = UserMovieEmbedding(
                 users_num, items_num, self.embedding_dim
             )
             self.embedding_network([np.zeros((1,)), np.zeros((1,))])
             self.embedding_network.load_weights(
-                self.embedding_network_weights_path["user-movie"]
+                self.embedding_network_weights_path["user_movie"]
             )
         else:
             self.embedding_network = UserMovieGenreEmbedding(
@@ -202,7 +202,7 @@ class DRRAgent:
 
     def get_items_emb(self, items_ids):
 
-        if self.emb_model == "user-movie":
+        if self.emb_model == "user_movie":
             items_eb = self.embedding_network.get_layer("movie_embedding")(
                 np.array(items_ids)
             )
@@ -380,16 +380,24 @@ class DRRAgent:
 
                     propfair = 0
                     total_exp = 0
-                    for group in range(self.n_groups):
-                        _group = group + 1
-                        if _group not in self.env.group_count:
-                            self.env.group_count[_group] = 0
-                        total_exp += self.env.group_count[_group]
+                    if sum(self.env.group_count.values()) > 0:
+                        for group in range(self.n_groups):
+                            _group = group + 1
+                            if _group not in self.env.group_count:
+                                self.env.group_count[_group] = 0
+                            total_exp += self.env.group_count[_group] / sum(
+                                self.env.group_count.values()
+                            )
 
                     for group in range(self.n_groups):
                         _group = group + 1
                         propfair += self.fairness_constraints[group] * math.log(
-                            1 + (self.env.group_count[_group] / total_exp)
+                            1
+                            + (
+                                self.env.group_count[_group] / total_exp
+                                if total_exp > 0
+                                else 0
+                            )
                         )
                     cvr = correct_count / steps
 
@@ -492,16 +500,17 @@ class DRRAgent:
 
         propfair = 0
         total_exp = 0
-        for group in range(self.n_groups):
-            _group = group + 1
-            if _group not in env.group_count:
-                env.group_count[_group] = 0
-            total_exp += env.group_count[_group]
+        if sum(env.group_count.values()) > 0:
+            for group in range(self.n_groups):
+                _group = group + 1
+                if _group not in env.group_count:
+                    env.group_count[_group] = 0
+                total_exp += env.group_count[_group] / sum(env.group_count.values())
 
         for group in range(self.n_groups):
             _group = group + 1
             propfair += self.fairness_constraints[group] * math.log(
-                1 + (env.group_count[_group] / total_exp)
+                1 + (env.group_count[_group] / total_exp if total_exp > 0 else 0)
             )
 
         ufg = propfair / max(1 - mean_ufg, 0.01)

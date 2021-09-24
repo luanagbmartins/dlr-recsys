@@ -26,7 +26,7 @@ class MLEmbedding(luigi.Task):
     dataset_path: str = luigi.Parameter()
     use_wandb: bool = luigi.BoolParameter()
 
-    emb_model: str = luigi.Parameter(default="user-movie")
+    emb_model: str = luigi.Parameter(default="user_movie")
     max_epoch: int = luigi.IntParameter(default=150)
     init_user_batch_size: int = luigi.IntParameter(default=32)
     final_user_batch_size: int = luigi.IntParameter(default=1024)
@@ -55,7 +55,7 @@ class MLEmbedding(luigi.Task):
     def run(self):
         dataset = self.load_data()
 
-        if self.emb_model == "user-movie":
+        if self.emb_model == "user_movie":
             self.train_user_movie(dataset)
         else:
             self.train_user_movie_genre(dataset)
@@ -200,19 +200,19 @@ class MLEmbedding(luigi.Task):
                 for item in m_batch:
                     genres.append(dataset["movies_genres_id"][item])
 
-                items_eb = m_g_model.get_layer('movie_embedding')(np.array(m_batch))
+                items_eb = m_g_model.get_layer("movie_embedding")(np.array(m_batch))
                 genres_eb = []
                 for items in m_batch:
                     ge = m_g_model.get_layer("genre_embedding")(
                         np.array(dataset["movies_genres_id"][items])
                     )
-                    genres_eb.append(ge)                
+                    genres_eb.append(ge)
                 genre_mean = []
                 for g in genres_eb:
                     genre_mean.append(tf.reduce_mean(g / self.embedding_dim, axis=0))
                 genre_mean = tf.stack(genre_mean)
-                
-                m_batch = tf.add(items_eb, genre_mean)  
+
+                m_batch = tf.add(items_eb, genre_mean)
                 self.um_train_step(
                     u_m_model,
                     bce,

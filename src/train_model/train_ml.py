@@ -46,7 +46,7 @@ class MovieLens(luigi.Task):
     fairness_constraints: list = luigi.ListParameter(default=[0.25, 0.25, 0.25, 0.25])
     top_k: int = luigi.IntParameter(default=10)
 
-    emb_model: str = luigi.Parameter(default="user-movie")
+    emb_model: str = luigi.Parameter(default="user_movie")
     embedding_network_weights: str = luigi.Parameter(default="")
 
     train_version: str = luigi.Parameter()
