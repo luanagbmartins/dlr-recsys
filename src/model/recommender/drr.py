@@ -74,6 +74,7 @@ class DRRAgent:
         self.discount_factor = discount_factor
         self.tau = tau
 
+        self.learning_starts = learning_starts
         self.replay_memory_size = replay_memory_size
         self.batch_size = batch_size
 
@@ -81,7 +82,7 @@ class DRRAgent:
         self.fairness_constraints = fairness_constraints
 
         self.movies_genres_id = movies_genres_id
-        
+
         self.actor = Actor(
             self.embedding_dim,
             self.srm_size,
@@ -114,7 +115,7 @@ class DRRAgent:
             self.embedding_network.load_weights(
                 self.embedding_network_weights_path["user_movie_genre"]
             )
-            
+
             self.movie_embedding_network = MovieGenreEmbedding(
                 items_num, genres_num, self.embedding_dim
             )
@@ -157,6 +158,8 @@ class DRRAgent:
                 config={
                     "users_num": users_num,
                     "items_num": items_num,
+                    "genres_num": genres_num,
+                    "emb_model": emb_model,
                     "state_size": state_size,
                     "embedding_dim": self.embedding_dim,
                     "actor_hidden_dim": self.actor_hidden_dim,
@@ -168,6 +171,7 @@ class DRRAgent:
                     "replay_memory_size": self.replay_memory_size,
                     "batch_size": self.batch_size,
                     "std_for_exploration": self.std,
+                    "group_fairness": n_groups,
                     "fairness_constraints": self.fairness_constraints,
                 },
             )
@@ -197,32 +201,34 @@ class DRRAgent:
             return items_ids[item_idx]
 
     def get_items_emb(self, items_ids):
-        
+
         if self.emb_model == "user-movie":
-            items_eb = self.embedding_network.get_layer('movie_embedding')(np.array(items_ids))
+            items_eb = self.embedding_network.get_layer("movie_embedding")(
+                np.array(items_ids)
+            )
         else:
             genres = []
             for item in items_ids:
                 genres.append(self.movies_genres_id[item])
 
-            items_eb = self.movie_embedding_network.get_layer('movie_embedding')(np.array(items_ids))
-            
+            items_eb = self.movie_embedding_network.get_layer("movie_embedding")(
+                np.array(items_ids)
+            )
 
             genres_eb = []
             for items in items_ids:
                 ge = self.movie_embedding_network.get_layer("genre_embedding")(
                     np.array(self.movies_genres_id[items])
                 )
-                genres_eb.append(ge)                
+                genres_eb.append(ge)
             genre_mean = []
             for g in genres_eb:
                 genre_mean.append(tf.reduce_mean(g / self.embedding_dim, axis=0))
             genre_mean = tf.stack(genre_mean)
-            
-            items_eb = tf.add(items_eb, genre_mean)  
+
+            items_eb = tf.add(items_eb, genre_mean)
 
         return items_eb
-
 
     def train(self, max_episode_num, top_k=False, load_model=False):
         self.actor.update_target_network()
@@ -269,9 +275,11 @@ class DRRAgent:
 
             while not done:
                 # observe current state & Find action
-                user_eb = self.embedding_network.get_layer('user_embedding')(np.array(user_id))
+                user_eb = self.embedding_network.get_layer("user_embedding")(
+                    np.array(user_id)
+                )
                 items_eb = self.get_items_emb(items_ids)
-               
+
                 ## SRM state
                 state = self.srm_ave(
                     [np.expand_dims(user_eb, axis=0), np.expand_dims(items_eb, axis=0)]
@@ -361,45 +369,39 @@ class DRRAgent:
                 if reward > 0:
                     correct_count += 1
 
-                propfair = 0
-                for group in range(self.n_groups):
-                    _group = group + 1
-                    if _group not in self.env.group_count:
-                        self.env.group_count[_group] = 0
-
-                    propfair += self.fairness_constraints[group] * math.log(
-                        1
-                        + (
-                            self.env.group_count[_group]
-                            / self.env.total_recommended_items
-                        )
-                    )
-                cvr = correct_count / self.env.total_recommended_items
-                wandb.log(
-                    {
-                        "propfair": propfair,
-                        "cvr": cvr,
-                        "ufg": propfair / max(1 - cvr, 0.01),
-                    }
-                )
-
                 print("----------")
                 print("- recommended items: ", self.env.total_recommended_items)
                 print("- group count: ", self.env.group_count)
-                print("- propfair: ", propfair)
-                print("- cvr: ", cvr)
-                print("- ufg: ", propfair / max(1 - cvr, 0.01))
                 print("- epsilon: ", self.epsilon)
                 print("- reward: ", reward)
                 print()
 
                 if done:
+
+                    propfair = 0
+                    total_exp = 0
+                    for group in range(self.n_groups):
+                        _group = group + 1
+                        if _group not in self.env.group_count:
+                            self.env.group_count[_group] = 0
+                        total_exp += self.env.group_count[_group]
+
+                    for group in range(self.n_groups):
+                        _group = group + 1
+                        propfair += self.fairness_constraints[group] * math.log(
+                            1 + (self.env.group_count[_group] / total_exp)
+                        )
+                    cvr = correct_count / steps
+
                     precision = int(correct_count / steps * 100)
                     print("----------")
                     print("- precision: ", precision)
                     print("- total_reward: ", episode_reward)
                     print("- q_loss: ", q_loss / steps)
                     print("- mean_action: ", mean_action / steps)
+                    print("- propfair: ", propfair)
+                    print("- cvr: ", cvr)
+                    print("- ufg: ", propfair / max(1 - cvr, 0.01))
                     print()
                     if self.use_wandb:
                         wandb.log(
@@ -409,6 +411,9 @@ class DRRAgent:
                                 "epsilone": self.epsilon,
                                 "q_loss": q_loss / steps,
                                 "mean_action": mean_action / steps,
+                                "propfair": propfair,
+                                "cvr": cvr,
+                                "ufg": propfair / max(1 - cvr, 0.01),
                             }
                         )
                     episodic_precision_history.append(precision)
@@ -427,23 +432,27 @@ class DRRAgent:
                     os.path.join(self.model_path, "critic_{}.h5".format(episode + 1)),
                 )
 
-    def evaluate(self, env, top_k=False):
+    def evaluate(self, env, top_k=0):
         # episodic reward
         episode_reward = 0
         correct_count = 0
         steps = 0
+
         mean_precision = 0
         mean_ndcg = 0
         mean_cvr = 0
         mean_propfair = 0
         mean_ufg = 0
+
         # Environment
         user_id, items_ids, done = env.reset()
 
         while not done:
             # Observe current state and Find action
             ## Embedding
-            user_eb = self.embedding_network.get_layer('user_embedding')(np.array(user_id))
+            user_eb = self.embedding_network.get_layer("user_embedding")(
+                np.array(user_id)
+            )
             items_eb = self.get_items_emb(items_ids)
 
             ## SRM state
@@ -472,35 +481,37 @@ class DRRAgent:
                 # precision
                 correct_num = top_k - correct_list.count(0)
                 mean_precision += correct_num / top_k
+                mean_cvr += correct_num / top_k
+            else:
+                mean_cvr += correct_num
 
             reward = np.sum(reward)
             items_ids = next_items_ids
             episode_reward += reward
             steps += 1
 
-            propfair = 0
-            for group in range(10):
-                _group = group + 1
-                if _group not in env.group_count:
-                    env.group_count[_group] = 0
+        propfair = 0
+        total_exp = 0
+        for group in range(self.n_groups):
+            _group = group + 1
+            if _group not in env.group_count:
+                env.group_count[_group] = 0
+            total_exp += env.group_count[_group]
 
-                propfair += self.fairness_constraints[group] * math.log(
-                    1 + (env.group_count[_group] / len(recommended_item))
-                )
+        for group in range(self.n_groups):
+            _group = group + 1
+            propfair += self.fairness_constraints[group] * math.log(
+                1 + (env.group_count[_group] / total_exp)
+            )
 
-            cvr = correct_num / len(recommended_item)
-            ufg = propfair / max(1 - cvr, 0.01)
-
-            mean_propfair += propfair
-            mean_cvr += cvr
-            mean_ufg += ufg
+        ufg = propfair / max(1 - mean_ufg, 0.01)
 
         return (
             mean_precision / steps,
             mean_ndcg / steps,
-            mean_propfair / steps,
+            propfair,
             mean_cvr / steps,
-            mean_ufg / steps,
+            ufg,
         )
 
     def calculate_ndcg(self, rel, irel):

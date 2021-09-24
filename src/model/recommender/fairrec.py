@@ -1,5 +1,6 @@
 import os
 import math
+import json
 from tqdm import tqdm
 from src.model.replay_buffer import PriorityExperienceReplay
 import tensorflow as tf
@@ -9,7 +10,11 @@ from tensorflow.python.ops.gen_math_ops import Exp
 from src.model.actor import Actor
 from src.model.critic import Critic
 from src.model.replay_memory import ReplayMemory
-from src.model.embedding import MovieGenreEmbedding, UserMovieEmbedding
+from src.model.embedding import (
+    MovieGenreEmbedding,
+    UserMovieEmbedding,
+    UserMovieGenreEmbedding,
+)
 from src.model.state_representation import FairRecStateRepresentation
 
 import matplotlib.pyplot as plt
@@ -23,10 +28,13 @@ class FairRecAgent:
         env,
         users_num,
         items_num,
+        genres_num,
+        movies_genres_id,
         state_size,
         srm_size,
         model_path,
         embedding_network_weights_path,
+        emb_model,
         train_version,
         is_test=False,
         use_wandb=False,
@@ -48,9 +56,13 @@ class FairRecAgent:
 
         self.users_num = users_num
         self.items_num = items_num
+        self.genres_num = genres_num
 
         self.model_path = model_path
-        self.embedding_network_weights_path = embedding_network_weights_path
+
+        self.emb_model = emb_model
+        with open(embedding_network_weights_path) as json_file:
+            self.embedding_network_weights_path = json.load(json_file)
 
         self.embedding_dim = embedding_dim
         self.srm_size = srm_size
@@ -84,13 +96,30 @@ class FairRecAgent:
             self.tau,
         )
 
-        self.embedding_network = UserMovieEmbedding(
-            users_num, items_num, self.embedding_dim
-        )
-        self.embedding_network([np.zeros((1,)), np.zeros((1,))])
-        self.embedding_network.load_weights(
-            "model/movie_lens_1m_fair/movie_lens_1m_fair_2021-09-16_13-46-33/user_movie.h5"
-        )  # self.embedding_network_weights_path)
+        if self.emb_model == "user-movie":
+            self.embedding_network = UserMovieEmbedding(
+                users_num, items_num, self.embedding_dim
+            )
+            self.embedding_network([np.zeros((1,)), np.zeros((1,))])
+            self.embedding_network.load_weights(
+                self.embedding_network_weights_path["user-movie"]
+            )
+        else:
+            self.embedding_network = UserMovieGenreEmbedding(
+                users_num, self.embedding_dim
+            )
+            self.embedding_network([np.zeros((1)), np.zeros((1, self.embedding_dim))])
+            self.embedding_network.load_weights(
+                self.embedding_network_weights_path["user_movie_genre"]
+            )
+
+            self.movie_embedding_network = MovieGenreEmbedding(
+                items_num, genres_num, self.embedding_dim
+            )
+            self.movie_embedding_network([np.zeros((1)), np.zeros((1))])
+            self.movie_embedding_network.load_weights(
+                self.embedding_network_weights_path["movie_genre"]
+            )
 
         self.srm_ave = FairRecStateRepresentation(self.embedding_dim, self.n_groups)
         self.srm_ave(
@@ -128,6 +157,8 @@ class FairRecAgent:
                 config={
                     "users_num": users_num,
                     "items_num": items_num,
+                    "genres_num": genres_num,
+                    "emb_model": emb_model,
                     "state_size": state_size,
                     "embedding_dim": self.embedding_dim,
                     "actor_hidden_dim": self.actor_hidden_dim,
@@ -139,6 +170,7 @@ class FairRecAgent:
                     "replay_memory_size": self.replay_memory_size,
                     "batch_size": self.batch_size,
                     "std_for_exploration": self.std,
+                    "group_fairness": n_groups,
                     "fairness_constraints": self.fairness_constraints,
                 },
             )
@@ -155,7 +187,8 @@ class FairRecAgent:
                 list(set(i for i in range(self.items_num)) - recommended_items)
             )
 
-        items_ebs = self.embedding_network.get_layer("movie_embedding")(items_ids)
+        items_ebs = self.get_items_emb(items_ids)
+        # items_ebs = self.embedding_network.get_layer("movie_embedding")(items_ids)
         action = tf.transpose(action, perm=(1, 0))
         if top_k:
             item_indice = np.argsort(
@@ -165,6 +198,35 @@ class FairRecAgent:
         else:
             item_idx = np.argmax(tf.keras.backend.dot(items_ebs, action))
             return items_ids[item_idx]
+
+    def get_items_emb(self, items_ids):
+        if self.emb_model == "user-movie":
+            items_eb = self.embedding_network.get_layer("movie_embedding")(
+                np.array(items_ids)
+            )
+        else:
+            genres = []
+            for item in items_ids:
+                genres.append(self.movies_genres_id[item])
+
+            items_eb = self.movie_embedding_network.get_layer("movie_embedding")(
+                np.array(items_ids)
+            )
+
+            genres_eb = []
+            for items in items_ids:
+                ge = self.movie_embedding_network.get_layer("genre_embedding")(
+                    np.array(self.movies_genres_id[items])
+                )
+                genres_eb.append(ge)
+            genre_mean = []
+            for g in genres_eb:
+                genre_mean.append(tf.reduce_mean(g / self.embedding_dim, axis=0))
+            genre_mean = tf.stack(genre_mean)
+
+            items_eb = tf.add(items_eb, genre_mean)
+
+        return items_eb
 
     def train(self, max_episode_num, top_k=False, load_model=False):
         self.actor.update_target_network()
@@ -214,9 +276,10 @@ class FairRecAgent:
                 # user_eb = self.embedding_network.get_layer("user_embedding")(
                 #     np.array(user_id)
                 # )
-                items_eb = self.embedding_network.get_layer("movie_embedding")(
-                    np.array(items_ids)
-                )
+                # items_eb = self.embedding_network.get_layer("movie_embedding")(
+                #     np.array(items_ids)
+                # )
+                items_eb = self.get_items_emb(items_ids)
 
                 groups_eb = []
                 for items in items_ids:
@@ -233,15 +296,16 @@ class FairRecAgent:
                     )
 
                 fairness_allocation = []
+                total_exp = 0
                 for group in range(self.n_groups):
                     _group = group + 1
                     if _group not in self.env.group_count:
                         self.env.group_count[_group] = 0
-                    fairness_allocation.append(
-                        self.env.group_count[_group] / self.env.total_recommended_items
-                        if self.env.total_recommended_items > 0
-                        else 0
-                    )
+                    total_exp += self.env.group_count[_group]
+
+                for group in range(self.n_groups):
+                    _group = group + 1
+                    fairness_allocation.append(self.env.group_count[_group] / total_exp)
 
                 ## SRM state
                 state = self.srm_ave(
@@ -274,9 +338,7 @@ class FairRecAgent:
                     reward = np.sum(reward)
 
                 # get next_state
-                next_items_eb = self.embedding_network.get_layer("movie_embedding")(
-                    np.array(next_items_ids)
-                )
+                next_items_eb = self.get_items_emb(next_items_ids)
 
                 groups_eb = []
                 for items in items_ids:
@@ -293,13 +355,16 @@ class FairRecAgent:
                     )
 
                 fairness_allocation = []
+                total_exp = 0
                 for group in range(self.n_groups):
                     _group = group + 1
                     if _group not in self.env.group_count:
                         self.env.group_count[_group] = 0
-                    fairness_allocation.append(
-                        self.env.group_count[_group] / self.env.total_recommended_items
-                    )
+                    total_exp += self.env.group_count[_group]
+
+                for group in range(self.n_groups):
+                    _group = group + 1
+                    fairness_allocation.append(self.env.group_count[_group] / total_exp)
 
                 ## SRM state
                 next_state = self.srm_ave(
@@ -363,45 +428,39 @@ class FairRecAgent:
                 if reward > 0:
                     correct_count += 1
 
-                propfair = 0
-                for group in range(self.n_groups):
-                    _group = group + 1
-                    if _group not in self.env.group_count:
-                        self.env.group_count[_group] = 0
-
-                    propfair += self.fairness_constraints[group] * math.log(
-                        1
-                        + (
-                            self.env.group_count[_group]
-                            / self.env.total_recommended_items
-                        )
-                    )
-                cvr = correct_count / self.env.total_recommended_items
-                wandb.log(
-                    {
-                        "propfair": propfair,
-                        "cvr": cvr,
-                        "ufg": propfair / max(1 - cvr, 0.01),
-                    }
-                )
-
                 print("----------")
                 print("- recommended items: ", self.env.total_recommended_items)
                 print("- group count: ", self.env.group_count)
-                print("- propfair: ", propfair)
-                print("- cvr: ", cvr)
-                print("- ufg: ", propfair / max(1 - cvr, 0.01))
                 print("- epsilon: ", self.epsilon)
                 print("- reward: ", reward)
                 print()
 
                 if done:
+
+                    propfair = 0
+                    total_exp = 0
+                    for group in range(self.n_groups):
+                        _group = group + 1
+                        if _group not in self.env.group_count:
+                            self.env.group_count[_group] = 0
+                        total_exp += self.env.group_count[_group]
+
+                    for group in range(self.n_groups):
+                        _group = group + 1
+                        propfair += self.fairness_constraints[group] * math.log(
+                            1 + (self.env.group_count[_group] / total_exp)
+                        )
+                    cvr = correct_count / steps
+
                     precision = int(correct_count / steps * 100)
                     print("----------")
                     print("- precision: ", precision)
                     print("- total_reward: ", episode_reward)
                     print("- q_loss: ", q_loss / steps)
                     print("- mean_action: ", mean_action / steps)
+                    print("- propfair: ", propfair)
+                    print("- cvr: ", cvr)
+                    print("- ufg: ", propfair / max(1 - cvr, 0.01))
                     print()
                     if self.use_wandb:
                         wandb.log(
@@ -411,6 +470,9 @@ class FairRecAgent:
                                 "epsilone": self.epsilon,
                                 "q_loss": q_loss / steps,
                                 "mean_action": mean_action / steps,
+                                "propfair": propfair,
+                                "cvr": cvr,
+                                "ufg": propfair / max(1 - cvr, 0.01),
                             }
                         )
                     episodic_precision_history.append(precision)
@@ -444,9 +506,7 @@ class FairRecAgent:
 
         while not done:
             # Observe current state and Find action
-            items_eb = self.embedding_network.get_layer("movie_embedding")(
-                np.array(items_ids)
-            )
+            items_eb = self.get_items_emb(items_ids)
 
             groups_eb = []
             for items in items_ids:
@@ -463,15 +523,16 @@ class FairRecAgent:
                 )
 
             fairness_allocation = []
+            total_exp = 0
             for group in range(self.n_groups):
                 _group = group + 1
-                if _group not in env.group_count:
-                    env.group_count[_group] = 0
-                fairness_allocation.append(
-                    env.group_count[_group] / env.total_recommended_items
-                    if env.total_recommended_items > 0
-                    else 0
-                )
+                if _group not in self.env.group_count:
+                    self.env.group_count[_group] = 0
+                total_exp += self.env.group_count[_group]
+
+            for group in range(self.n_groups):
+                _group = group + 1
+                fairness_allocation.append(self.env.group_count[_group] / total_exp)
 
             ## SRM state
             state = self.srm_ave(
@@ -510,28 +571,27 @@ class FairRecAgent:
             steps += 1
 
             propfair = 0
-            for group in range(10):
+            total_exp = 0
+            for group in range(self.n_groups):
                 _group = group + 1
                 if _group not in env.group_count:
                     env.group_count[_group] = 0
+                total_exp += env.group_count[_group]
 
+            for group in range(self.n_groups):
+                _group = group + 1
                 propfair += self.fairness_constraints[group] * math.log(
-                    1 + (env.group_count[_group] / len(recommended_item))
+                    1 + (env.group_count[_group] / total_exp)
                 )
 
-            cvr = correct_num / len(recommended_item)
-            ufg = propfair / max(1 - cvr, 0.01)
-
-            mean_propfair += propfair
-            mean_cvr += cvr
-            mean_ufg += ufg
+            ufg = propfair / max(1 - mean_ufg, 0.01)
 
         return (
             mean_precision / steps,
             mean_ndcg / steps,
-            mean_propfair / steps,
+            propfair,
             mean_cvr / steps,
-            mean_ufg / steps,
+            ufg,
         )
 
     def calculate_ndcg(self, rel, irel):

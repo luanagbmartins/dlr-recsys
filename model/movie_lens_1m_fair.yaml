@@ -1,5 +1,5 @@
 users_num: 6040
-items_num: 3952
+items_num: 3883
 genres_num: 18
 embedding_dim: 50
 emb_model: "user-movie"

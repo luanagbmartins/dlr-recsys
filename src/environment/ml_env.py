@@ -166,12 +166,19 @@ class OfflineFairEnv(OfflineEnv):
                 if act in self.user_items.keys() and act not in self.recommended_items:
                     correctly_recommended.append(act)
 
+                    total_exp = 0
+                    for group in range(len(self.fairness_constraints)):
+                        _group = group + 1
+                        if _group not in self.group_count:
+                            env.group_count[_group] = 0
+                        total_exp += self.group_count[_group]
+
                     rew = (
                         (
                             self.fairness_constraints[group - 1]
                             / sum(self.fairness_constraints)
                         )
-                        - (self.group_count[group] / self.total_recommended_items)
+                        - (self.group_count[group] / total_exp)
                         + 1
                     )
                     rewards.append(rew)  # 0.5 * (self.user_items[act] - 3))
