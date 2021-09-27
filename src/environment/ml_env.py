@@ -79,7 +79,7 @@ class OfflineEnv(object):
                     rewards.append(-1)
                 self.recommended_items.add(act)
 
-                group = self.movies_groups[act + 1]
+                group = self.movies_groups[act]
                 if group not in self.group_count:
                     self.group_count[group] = 0
                 self.group_count[group] += 1
@@ -102,7 +102,7 @@ class OfflineEnv(object):
                 self.items = self.items[1:] + [action]
             self.recommended_items.add(action)
 
-            group = self.movies_groups[action + 1]
+            group = self.movies_groups[action]
             if group not in self.group_count:
                 self.group_count[group] = 0
             self.group_count[group] += 1
@@ -170,7 +170,7 @@ class OfflineFairEnv(OfflineEnv):
                     for group in range(len(self.fairness_constraints)):
                         _group = group + 1
                         if _group not in self.group_count:
-                            env.group_count[_group] = 0
+                            self.group_count[_group] = 0
                         total_exp += self.group_count[_group]
 
                     rew = (

@@ -287,7 +287,7 @@ class FairRecAgent:
                         self.embedding_network.get_layer("movie_embedding")(
                             np.array(
                                 [
-                                    k - 1
+                                    k
                                     for k, v in self.env.movies_groups.items()
                                     if v == self.env.movies_groups[items]
                                 ]
@@ -296,18 +296,12 @@ class FairRecAgent:
                     )
 
                 fairness_allocation = []
-                total_exp = 0
-                if sum(self.env.group_count.values()) > 0:
-                    for group in range(self.n_groups):
-                        _group = group + 1
-                        if _group not in self.env.group_count:
-                            self.env.group_count[_group] = 0
-                        total_exp += self.env.group_count[_group] / sum(
-                            self.env.group_count.values()
-                        )
-
+                total_exp = sum(self.env.group_count.values())
                 for group in range(self.n_groups):
                     _group = group + 1
+                    if _group not in self.env.group_count:
+                        self.env.group_count[_group] = 0
+
                     fairness_allocation.append(
                         self.env.group_count[_group] / total_exp
                         if total_exp > 0
@@ -353,7 +347,7 @@ class FairRecAgent:
                         self.embedding_network.get_layer("movie_embedding")(
                             np.array(
                                 [
-                                    k - 1
+                                    k
                                     for k, v in self.env.movies_groups.items()
                                     if v == self.env.movies_groups[items]
                                 ]
@@ -362,18 +356,12 @@ class FairRecAgent:
                     )
 
                 fairness_allocation = []
-                total_exp = 0
-                if sum(self.env.group_count.values()) > 0:
-                    for group in range(self.n_groups):
-                        _group = group + 1
-                        if _group not in self.env.group_count:
-                            self.env.group_count[_group] = 0
-                        total_exp += self.env.group_count[_group] / sum(
-                            self.env.group_count.values()
-                        )
-
+                total_exp = sum(self.env.group_count.values())
                 for group in range(self.n_groups):
                     _group = group + 1
+                    if _group not in self.env.group_count:
+                        self.env.group_count[_group] = 0
+
                     fairness_allocation.append(
                         self.env.group_count[_group] / total_exp
                         if total_exp > 0
@@ -452,18 +440,12 @@ class FairRecAgent:
                 if done:
 
                     propfair = 0
-                    total_exp = 0
-                    if sum(self.env.group_count.values()) > 0:
-                        for group in range(self.n_groups):
-                            _group = group + 1
-                            if _group not in self.env.group_count:
-                                self.env.group_count[_group] = 0
-                            total_exp += self.env.group_count[_group] / sum(
-                                self.env.group_count.values()
-                            )
-
+                    total_exp = sum(self.env.group_count.values())
                     for group in range(self.n_groups):
                         _group = group + 1
+                        if _group not in self.env.group_count:
+                            self.env.group_count[_group] = 0
+
                         propfair += self.fairness_constraints[group] * math.log(
                             1
                             + (
@@ -536,7 +518,7 @@ class FairRecAgent:
                     self.embedding_network.get_layer("movie_embedding")(
                         np.array(
                             [
-                                k - 1
+                                k
                                 for k, v in env.movies_groups.items()
                                 if v == env.movies_groups[items]
                             ]
@@ -545,22 +527,14 @@ class FairRecAgent:
                 )
 
             fairness_allocation = []
-            total_exp = 0
-            if sum(self.env.group_count.values()) > 0:
-                for group in range(self.n_groups):
-                    _group = group + 1
-                    if _group not in self.env.group_count:
-                        self.env.group_count[_group] = 0
-                    total_exp += self.env.group_count[_group] / sum(
-                        self.env.group_count.values()
-                    )
-
+            total_exp = sum(env.group_count.values())
             for group in range(self.n_groups):
                 _group = group + 1
+                if _group not in env.group_count:
+                    env.group_count[_group] = 0
+
                 fairness_allocation.append(
-                    self.env.group_count[_group] / total_exp
-                    if total_exp > 0
-                    else total_exp
+                    env.group_count[_group] / total_exp if total_exp > 0 else total_exp
                 )
 
             ## SRM state
@@ -600,16 +574,12 @@ class FairRecAgent:
             steps += 1
 
             propfair = 0
-            total_exp = 0
-            if sum(env.group_count.values()) > 0:
-                for group in range(self.n_groups):
-                    _group = group + 1
-                    if _group not in env.group_count:
-                        env.group_count[_group] = 0
-                    total_exp += env.group_count[_group] / sum(env.group_count.values())
-
+            total_exp = sum(env.group_count.values())
             for group in range(self.n_groups):
                 _group = group + 1
+                if _group not in env.group_count:
+                    env.group_count[_group] = 0
+
                 propfair += self.fairness_constraints[group] * math.log(
                     1 + (env.group_count[_group] / total_exp if total_exp > 0 else 0)
                 )

@@ -192,6 +192,8 @@ class MovieLens(luigi.Task):
                 env=env,
                 users_num=self.users_num,
                 items_num=self.items_num,
+                genres_num=self.genres_num,
+                movies_genres_id=dataset["movies_genres_id"],
                 srm_size=self.srm_size,
                 state_size=self.state_size,
                 train_version=self.train_version,
@@ -207,9 +209,8 @@ class MovieLens(luigi.Task):
                 replay_memory_size=self.replay_memory_size,
                 batch_size=self.batch_size,
                 model_path=self.output_path,
-                embedding_network_weights_path=os.path.join(
-                    self.output_path, self.embedding_network_weights
-                ),
+                emb_model=self.emb_model,
+                embedding_network_weights_path=self.embedding_network_weights,
                 n_groups=self.n_groups,
                 fairness_constraints=self.fairness_constraints,
             )
