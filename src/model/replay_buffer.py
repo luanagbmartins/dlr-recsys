@@ -9,13 +9,6 @@ class PriorityExperienceReplay(object):
         self.crt_idx = 0
         self.is_full = False
 
-        """
-            state : (300,), 
-            next_state : (300,) 
-            actions : (100,), 
-            rewards : (1,), 
-            dones : (1,)
-        """
         self.states = np.zeros((buffer_size, state_size), dtype=np.float32)
         self.actions = np.zeros((buffer_size, embedding_dim), dtype=np.float32)
         self.rewards = np.zeros((buffer_size), dtype=np.float32)

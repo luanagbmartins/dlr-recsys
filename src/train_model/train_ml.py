@@ -9,7 +9,8 @@ import wandb
 import itertools
 import numpy as np
 import pandas as pd
-import tensorflow as tf
+
+# import tensorflow as tf
 import matplotlib.pyplot as plt
 
 
@@ -79,18 +80,28 @@ class MovieLens(luigi.Task):
         dataset = {}
         with open(_dataset_path["train_users_dict"], "rb") as pkl_file:
             dataset["train_users_dict"] = pickle.load(pkl_file)
+
+        with open(_dataset_path["train_users_dict_positive_items"], "rb") as pkl_file:
+            dataset["train_users_dict_positive_items"] = pickle.load(pkl_file)
+
         with open(_dataset_path["train_users_history_lens"], "rb") as pkl_file:
             dataset["train_users_history_lens"] = pickle.load(pkl_file)
+
         with open(_dataset_path["eval_users_dict"], "rb") as pkl_file:
             dataset["eval_users_dict"] = pickle.load(pkl_file)
+
+        with open(_dataset_path["eval_users_dict_positive_items"], "rb") as pkl_file:
+            dataset["eval_users_dict_positive_items"] = pickle.load(pkl_file)
+
         with open(_dataset_path["eval_users_history_lens"], "rb") as pkl_file:
             dataset["eval_users_history_lens"] = pickle.load(pkl_file)
+
         with open(_dataset_path["users_history_lens"], "rb") as pkl_file:
             dataset["users_history_lens"] = pickle.load(pkl_file)
-        with open(_dataset_path["movies_id_to_movies"], "rb") as pkl_file:
-            dataset["movies_id_to_movies"] = pickle.load(pkl_file)
-        with open(_dataset_path["movies_genres_id"], "rb") as pkl_file:
-            dataset["movies_genres_id"] = pickle.load(pkl_file)
+
+        # with open(_dataset_path["movies_genres_id"], "rb") as pkl_file:
+        #     dataset["movies_genres_id"] = pickle.load(pkl_file)
+
         with open(_dataset_path["movies_groups"], "rb") as pkl_file:
             dataset["movies_groups"] = pickle.load(pkl_file)
 
@@ -101,8 +112,8 @@ class MovieLens(luigi.Task):
 
         env = ENV[self.algorithm](
             dataset["train_users_dict"],
+            dataset["train_users_dict_positive_items"],
             dataset["train_users_history_lens"],
-            dataset["movies_id_to_movies"],
             dataset["movies_groups"],
             self.state_size,
             self.fairness_constraints,
@@ -114,7 +125,7 @@ class MovieLens(luigi.Task):
             users_num=self.users_num,
             items_num=self.items_num,
             genres_num=self.genres_num,
-            movies_genres_id=dataset["movies_genres_id"],
+            movies_genres_id={},
             srm_size=self.srm_size,
             state_size=self.state_size,
             train_version=self.train_version,
@@ -135,10 +146,6 @@ class MovieLens(luigi.Task):
             n_groups=self.n_groups,
             fairness_constraints=self.fairness_constraints,
         )
-
-        print("---------- Build Networks")
-        recommender.actor.build_networks()
-        recommender.critic.build_networks()
 
         print("---------- Start Training")
         recommender.train(
@@ -181,19 +188,20 @@ class MovieLens(luigi.Task):
             print("------------ ", self.algorithm)
             env = ENV[self.algorithm](
                 dataset["eval_users_dict"],
-                dataset["users_history_lens"],
-                dataset["movies_id_to_movies"],
+                dataset["eval_users_dict_positive_items"],
+                dataset["eval_users_history_lens"],
                 dataset["movies_groups"],
                 self.state_size,
                 self.fairness_constraints,
             )
+            available_users = env.available_users
 
             recommender = AGENT[self.algorithm](
                 env=env,
                 users_num=self.users_num,
                 items_num=self.items_num,
                 genres_num=self.genres_num,
-                movies_genres_id=dataset["movies_genres_id"],
+                movies_genres_id={},  # dataset["movies_genres_id"],
                 srm_size=self.srm_size,
                 state_size=self.state_size,
                 train_version=self.train_version,
@@ -215,19 +223,17 @@ class MovieLens(luigi.Task):
                 fairness_constraints=self.fairness_constraints,
             )
 
-            recommender.actor.build_networks()
-            recommender.critic.build_networks()
             recommender.load_model(
                 os.path.join(self.output_path, "actor_{}.h5".format(actor_checkpoint)),
                 os.path.join(
                     self.output_path, "critic_{}.h5".format(critic_checkpoint)
                 ),
             )
-            for user_id in dataset["eval_users_dict"].keys():
+            for user_id in available_users:
                 eval_env = ENV[self.algorithm](
                     dataset["eval_users_dict"],
-                    dataset["users_history_lens"],
-                    dataset["movies_id_to_movies"],
+                    dataset["eval_users_dict_positive_items"],
+                    dataset["eval_users_history_lens"],
                     dataset["movies_groups"],
                     self.state_size,
                     self.fairness_constraints,
@@ -236,13 +242,12 @@ class MovieLens(luigi.Task):
 
                 recommender.env = eval_env
 
-                precision, ndcg, propfair, cvr, ufg = recommender.evaluate(
+                precision, ndcg, propfair, ufg = recommender.evaluate(
                     eval_env, top_k=self.top_k
                 )
                 sum_precision += precision
                 sum_ndcg += ndcg
                 sum_propfair += propfair
-                sum_cvr += cvr
                 sum_ufg += ufg
 
                 del eval_env
@@ -251,7 +256,6 @@ class MovieLens(luigi.Task):
             print("- precision@: ", sum_precision / len(dataset["eval_users_dict"]))
             print("- ndcg@: ", sum_ndcg / len(dataset["eval_users_dict"]))
             print("- propfair: ", sum_propfair / len(dataset["eval_users_dict"]))
-            print("- cvr: ", sum_cvr / len(dataset["eval_users_dict"]))
             print("- ufg: ", sum_ufg / len(dataset["eval_users_dict"]))
             print()
 

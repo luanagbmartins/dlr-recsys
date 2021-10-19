@@ -1,24 +1,32 @@
-import tensorflow as tf
+# mport tensorflow as tf
 import numpy as np
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
-class ActorNetwork(tf.keras.Model):
+
+class ActorNetwork(nn.Module):
     def __init__(self, embedding_dim, srm_size, hidden_dim):
         super(ActorNetwork, self).__init__()
-        self.inputs = tf.keras.layers.InputLayer(
-            name="input_layer", input_shape=(srm_size * embedding_dim,)
-        )
-        self.fc = tf.keras.Sequential(
-            [
-                tf.keras.layers.Dense(hidden_dim, activation="relu"),
-                tf.keras.layers.Dense(hidden_dim, activation="relu"),
-                tf.keras.layers.Dense(embedding_dim, activation="tanh"),
-            ]
+        self.layers = nn.Sequential(
+            nn.Linear(embedding_dim * srm_size, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, embedding_dim),
+            nn.Tanh(),
         )
 
-    def call(self, x):
-        x = self.inputs(x)
-        return self.fc(x)
+        self.initialize()
+
+    def initialize(self):
+        for layer in self.layers:
+            if isinstance(layer, nn.Linear):
+                nn.init.kaiming_uniform_(layer.weight)
+
+    def forward(self, state):
+        return self.layers(state)
 
 
 class Actor(object):
@@ -31,28 +39,22 @@ class Actor(object):
         self.state_size = state_size
         self.network = ActorNetwork(embedding_dim, srm_size, hidden_dim)
         self.target_network = ActorNetwork(embedding_dim, srm_size, hidden_dim)
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate)
+
+        self.optimizer = torch.optim.Adam(self.network.parameters(), learning_rate)
         self.tau = tau
 
-    def build_networks(self):
-        self.network(np.zeros((1, self.srm_size * self.embedding_dim)))
-        self.target_network(np.zeros((1, self.srm_size * self.embedding_dim)))
+        self.update_target_network()
 
     def update_target_network(self):
-        c_theta, t_theta = self.network.get_weights(), self.target_network.get_weights()
-        for i in range(len(c_theta)):
-            t_theta[i] = self.tau * c_theta[i] + (1 - self.tau) * t_theta[i]
-        self.target_network.set_weights(t_theta)
-
-    def train(self, states, dq_das):
-        with tf.GradientTape() as g:
-            outputs = self.network(states)
-        dj_dtheta = g.gradient(outputs, self.network.trainable_weights, -dq_das)
-        grads = zip(dj_dtheta, self.network.trainable_weights)
-        self.optimizer.apply_gradients(grads)
+        for target_param, param in zip(
+            self.target_network.parameters(), self.network.parameters()
+        ):
+            target_param.data.copy_(
+                target_param.data * (1.0 - self.tau) + param.data * self.tau
+            )
 
     def save_weights(self, path):
-        self.network.save_weights(path)
+        torch.save(self.network.state_dict(), path)
 
     def load_weights(self, path):
-        self.network.load_weights(path)
+        self.network.load_state_dict(torch.load(path))

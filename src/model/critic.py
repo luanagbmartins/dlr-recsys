@@ -1,25 +1,35 @@
-import tensorflow as tf
 import numpy as np
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
-class CriticNetwork(tf.keras.Model):
+
+class CriticNetwork(nn.Module):
     def __init__(self, embedding_dim, srm_size, hidden_dim):
         super(CriticNetwork, self).__init__()
-        self.inputs = tf.keras.layers.InputLayer(
-            input_shape=(embedding_dim, srm_size * embedding_dim)
-        )
-        self.fc1 = tf.keras.layers.Dense(embedding_dim, activation="relu")
-        self.concat = tf.keras.layers.Concatenate()
-        self.fc2 = tf.keras.layers.Dense(hidden_dim, activation="relu")
-        self.fc3 = tf.keras.layers.Dense(hidden_dim, activation="relu")
-        self.out = tf.keras.layers.Dense(1, activation="linear")
 
-    def call(self, x):
-        s = self.fc1(x[1])
-        s = self.concat([x[0], s])
-        s = self.fc2(s)
-        s = self.fc3(s)
-        return self.out(s)
+        self.act = nn.ReLU()
+        self.fc1 = nn.Linear(embedding_dim * srm_size, embedding_dim)
+        self.fc2 = nn.Linear(embedding_dim * 2, hidden_dim)
+        self.fc3 = nn.Linear(hidden_dim, hidden_dim)
+        self.out = nn.Linear(hidden_dim, 1)
+
+        self.initialize()
+
+    def initialize(self):
+        nn.init.kaiming_uniform_(self.fc1.weight)
+        nn.init.kaiming_uniform_(self.fc2.weight)
+        nn.init.kaiming_uniform_(self.fc3.weight)
+        nn.init.kaiming_uniform_(self.out.weight)
+
+    def forward(self, x):
+        s = self.act(self.fc1(x[1]))
+        s = torch.cat([x[0], s], 1)
+        s = self.act(self.fc2(s))
+        s = self.act(self.fc3(s))
+        s = self.out(s)
+        return s
 
 
 class Critic(object):
@@ -29,63 +39,22 @@ class Critic(object):
         self.srm_size = srm_size
         self.network = CriticNetwork(embedding_dim, srm_size, hidden_dim)
         self.target_network = CriticNetwork(embedding_dim, srm_size, hidden_dim)
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-        self.loss = tf.keras.losses.MeanSquaredError(
-            reduction=tf.keras.losses.Reduction.NONE
-        )
+        self.optimizer = torch.optim.Adam(self.network.parameters(), learning_rate)
+        self.loss = nn.MSELoss()
         self.tau = tau
 
-    def build_networks(self):
-        self.network(
-            [
-                np.zeros((1, self.embedding_dim)),
-                np.zeros((1, self.srm_size * self.embedding_dim)),
-            ]
-        )
-        self.target_network(
-            [
-                np.zeros((1, self.embedding_dim)),
-                np.zeros((1, self.srm_size * self.embedding_dim)),
-            ]
-        )
-        self.network.compile(self.optimizer, self.loss)
+        self.update_target_network()
 
     def update_target_network(self):
-        c_omega = self.network.get_weights()
-        t_omega = self.target_network.get_weights()
-        for i in range(len(c_omega)):
-            t_omega[i] = self.tau * c_omega[i] + (1 - self.tau) * t_omega[i]
-        self.target_network.set_weights(t_omega)
-
-    def dq_da(self, inputs):
-        actions = inputs[0]
-        states = inputs[1]
-        with tf.GradientTape() as g:
-            actions = tf.convert_to_tensor(actions)
-            g.watch(actions)
-            outputs = self.network([actions, states])
-        q_grads = g.gradient(outputs, actions)
-        return q_grads
-
-    def train(self, inputs, td_targets, weight_batch):
-        weight_batch = tf.convert_to_tensor(weight_batch, dtype=tf.float32)
-        with tf.GradientTape() as g:
-            outputs = self.network(inputs)
-            loss = self.loss(td_targets, outputs)
-            weighted_loss = tf.reduce_mean(loss * weight_batch)
-        dl_domega = g.gradient(weighted_loss, self.network.trainable_weights)
-        grads = zip(dl_domega, self.network.trainable_weights)
-        self.optimizer.apply_gradients(grads)
-        return weighted_loss
-
-    def train_on_batch(self, inputs, td_targets, weight_batch):
-        loss = self.network.train_on_batch(
-            inputs, td_targets, sample_weight=weight_batch
-        )
-        return loss
+        for target_param, param in zip(
+            self.target_network.parameters(), self.network.parameters()
+        ):
+            target_param.data.copy_(
+                target_param.data * (1.0 - self.tau) + param.data * self.tau
+            )
 
     def save_weights(self, path):
-        self.network.save_weights(path)
+        torch.save(self.network.state_dict(), path)
 
     def load_weights(self, path):
-        self.network.load_weights(path)
+        self.network.load_state_dict(torch.load(path))
