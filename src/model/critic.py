@@ -10,8 +10,8 @@ class CriticNetwork(nn.Module):
         super(CriticNetwork, self).__init__()
 
         self.act = nn.ReLU()
-        self.fc1 = nn.Linear(embedding_dim * srm_size, embedding_dim)
-        self.fc2 = nn.Linear(embedding_dim * 2, hidden_dim)
+        self.fc1 = nn.Linear(embedding_dim * srm_size, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
         self.fc3 = nn.Linear(hidden_dim, hidden_dim)
         self.out = nn.Linear(hidden_dim, 1)
 
@@ -33,12 +33,14 @@ class CriticNetwork(nn.Module):
 
 
 class Critic(object):
-    def __init__(self, hidden_dim, learning_rate, embedding_dim, srm_size, tau):
+    def __init__(self, hidden_dim, learning_rate, embedding_dim, srm_size, tau, device):
 
         self.embedding_dim = embedding_dim
         self.srm_size = srm_size
-        self.network = CriticNetwork(embedding_dim, srm_size, hidden_dim)
-        self.target_network = CriticNetwork(embedding_dim, srm_size, hidden_dim)
+        self.network = CriticNetwork(embedding_dim, srm_size, hidden_dim).to(device)
+        self.target_network = CriticNetwork(embedding_dim, srm_size, hidden_dim).to(
+            device
+        )
         self.optimizer = torch.optim.Adam(self.network.parameters(), learning_rate)
         self.loss = nn.MSELoss()
         self.tau = tau

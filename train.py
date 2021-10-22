@@ -76,7 +76,6 @@ class DRLTrain(luigi.Task):
             genres_num=self.train_config["genres_num"],
             embedding_dim=self.train_config["embedding_dim"],
             emb_model=self.train_config["emb_model"],
-            # embedding_network_weights=self.train_config["embedding_network_weights"],
             output_path=self.output_path,
             train_version=self.train_version,
             use_wandb=self.use_wandb,

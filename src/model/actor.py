@@ -14,6 +14,8 @@ class ActorNetwork(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
             nn.Linear(hidden_dim, embedding_dim),
             nn.Tanh(),
         )
@@ -31,14 +33,23 @@ class ActorNetwork(nn.Module):
 
 class Actor(object):
     def __init__(
-        self, embedding_dim, srm_size, hidden_dim, learning_rate, state_size, tau
+        self,
+        embedding_dim,
+        srm_size,
+        hidden_dim,
+        learning_rate,
+        state_size,
+        tau,
+        device,
     ):
 
         self.embedding_dim = embedding_dim
         self.srm_size = srm_size
         self.state_size = state_size
-        self.network = ActorNetwork(embedding_dim, srm_size, hidden_dim)
-        self.target_network = ActorNetwork(embedding_dim, srm_size, hidden_dim)
+        self.network = ActorNetwork(embedding_dim, srm_size, hidden_dim).to(device)
+        self.target_network = ActorNetwork(embedding_dim, srm_size, hidden_dim).to(
+            device
+        )
 
         self.optimizer = torch.optim.Adam(self.network.parameters(), learning_rate)
         self.tau = tau

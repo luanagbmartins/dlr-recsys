@@ -48,7 +48,12 @@ class DRRAgent:
         batch_size=32,
         n_groups=4,
         fairness_constraints=[0.25, 0.25, 0.25, 0.25],
+        no_cuda=False,
     ):
+
+        self.device = torch.device(
+            "cuda" if torch.cuda.is_available() and not no_cuda else "cpu"
+        )
 
         self.env = env
 
@@ -86,6 +91,7 @@ class DRRAgent:
             self.actor_learning_rate,
             state_size,
             self.tau,
+            self.device,
         )
         self.critic = Critic(
             self.critic_hidden_dim,
@@ -93,12 +99,18 @@ class DRRAgent:
             self.embedding_dim,
             self.srm_size,
             self.tau,
+            self.device,
         )
 
         if self.emb_model == "user_movie":
-            self.reward_model = PMF(users_num, items_num, self.embedding_dim)
+            self.reward_model = PMF(users_num, items_num, self.embedding_dim).to(
+                self.device
+            )
             self.reward_model.load_state_dict(
-                torch.load(self.embedding_network_weights_path)
+                torch.load(
+                    self.embedding_network_weights_path,
+                    map_location=torch.device(self.device),
+                )
             )
 
             self.user_embeddings = self.reward_model.user_embeddings.weight.data
@@ -106,7 +118,7 @@ class DRRAgent:
         else:
             raise "Embedding Model Type not supported"
 
-        self.srm_ave = DRRAveStateRepresentation(self.embedding_dim)
+        self.srm_ave = DRRAveStateRepresentation(self.embedding_dim).to(self.device)
 
         self.buffer = PriorityExperienceReplay(
             self.replay_memory_size,
@@ -164,15 +176,12 @@ class DRRAgent:
         action = torch.transpose(action, 1, 0).float()
 
         if top_k:
-            item_indice = np.argsort(
+            item_indice = torch.argsort(
                 torch.transpose(torch.matmul(items_ebs, action), 1, 0)
-                .detach()
-                .cpu()
-                .numpy()
             )[0][-top_k:]
             return items_ids[item_indice]
         else:
-            item_idx = np.argmax(torch.matmul(items_ebs, action).detach().cpu().numpy())
+            item_idx = torch.argmax(torch.matmul(items_ebs, action))
             return items_ids[item_idx]
 
     def get_items_emb(self, items_ids):
@@ -237,8 +246,8 @@ class DRRAgent:
                     ## SRM state
                     state = self.srm_ave(
                         [
-                            torch.FloatTensor(np.expand_dims(user_eb, axis=0)),
-                            torch.FloatTensor(np.expand_dims(items_eb, axis=0)),
+                            user_eb.unsqueeze(0),
+                            items_eb.unsqueeze(0),
                         ]
                     )
 
@@ -250,7 +259,7 @@ class DRRAgent:
                     if not self.is_test:
                         action = self.noise.get_action(
                             action.detach().cpu().numpy()[0], steps
-                        )
+                        ).to(self.device)
                         # self.epsilon = max(
                         #     self.epsilon * self.epsilon_decay, self.epsilon_min
                         # )
@@ -275,13 +284,19 @@ class DRRAgent:
                 with torch.no_grad():
                     next_state = self.srm_ave(
                         [
-                            torch.FloatTensor(np.expand_dims(user_eb, axis=0)),
-                            torch.FloatTensor(np.expand_dims(next_items_eb, axis=0)),
+                            user_eb.unsqueeze(0),
+                            next_items_eb.unsqueeze(0),
                         ]
                     )
 
                 # buffer
-                self.buffer.append(state, action, reward, next_state, done)
+                self.buffer.append(
+                    state.detach().cpu().numpy(),
+                    action.detach().cpu().numpy(),
+                    reward,
+                    next_state.detach().cpu().numpy(),
+                    done,
+                )
 
                 if self.buffer.crt_idx > self.learning_starts or self.buffer.is_full:
                     _actor_loss, _critic_loss = self.update_model()
@@ -291,7 +306,9 @@ class DRRAgent:
                 items_ids = next_items_ids
                 episode_reward += reward
 
-                mean_action += np.sum(action[0].numpy()) / (len(action[0]))
+                mean_action += np.sum(action[0].cpu().numpy()) / (
+                    len(action[0].cpu().numpy())
+                )
                 steps += 1
 
                 if reward > 0:
@@ -305,24 +322,16 @@ class DRRAgent:
                 print()
 
                 if done:
-
                     propfair = 0
-                    total_exp = sum(self.env.group_count.values())
-
-                    for group in range(self.n_groups):
-                        _group = group + 1
-                        if _group not in self.env.group_count:
-                            self.env.group_count[_group] = 0
-
-                        propfair += self.fairness_constraints[group] * math.log(
-                            (
+                    total_exp = np.sum(list(self.env.group_count.values()))
+                    if total_exp > 0:
+                        propfair = np.sum(
+                            np.array(self.fairness_constraints)
+                            * np.log(
                                 1
-                                + (
-                                    self.env.group_count[_group] / total_exp
-                                    if total_exp > 0
-                                    else 0
-                                )
-                            ),
+                                + np.array(list(self.env.group_count.values()))
+                                / total_exp
+                            )
                         )
                     cvr = correct_count / steps
                     precision = int(correct_count / steps * 100)
@@ -380,22 +389,27 @@ class DRRAgent:
             index_batch,
         ) = self.buffer.sample(self.batch_size)
 
+        batch_states = torch.FloatTensor(batch_states).to(self.device)
+        batch_actions = torch.FloatTensor(batch_actions).to(self.device)
+        batch_rewards = torch.FloatTensor(batch_rewards).to(self.device)
+        batch_next_states = torch.FloatTensor(batch_next_states).to(self.device)
+        batch_dones = torch.FloatTensor(batch_dones).to(self.device)
+        weight_batch = torch.FloatTensor(weight_batch).to(self.device)
+
         # set TD targets
-        target_next_action = self.actor.target_network(
-            torch.FloatTensor(batch_next_states)
-        )
+        target_next_action = self.actor.target_network(batch_next_states)
 
         qs = self.critic.network(
             [
-                torch.FloatTensor(target_next_action),
-                torch.FloatTensor(batch_next_states),
+                target_next_action,
+                batch_next_states,
             ]
         )
 
         target_qs = self.critic.target_network(
             [
-                torch.FloatTensor(target_next_action),
-                torch.FloatTensor(batch_next_states),
+                target_next_action,
+                batch_next_states,
             ]
         )
 
@@ -404,24 +418,24 @@ class DRRAgent:
         )  # Double Q method
 
         td_targets = self.calculate_td_target(
-            torch.FloatTensor(batch_rewards),
+            batch_rewards,
             min_qs,
-            torch.FloatTensor(batch_dones),
-        )
+            batch_dones,
+        ).unsqueeze(1)
 
         # update priority
         for (p, i) in zip(td_targets, index_batch):
-            self.buffer.update_priority(abs(p) + self.epsilon_for_priority, i)
+            self.buffer.update_priority(abs(p[0]) + self.epsilon_for_priority, i)
 
         # update critic network
         value = self.critic.network(
             [
-                torch.FloatTensor(batch_actions),
-                torch.FloatTensor(batch_states),
+                batch_actions,
+                batch_states,
             ]
         )
         value_loss = self.critic.loss(value, td_targets)
-        weighted_loss = torch.mean(value_loss * torch.FloatTensor(weight_batch))
+        weighted_loss = torch.mean(value_loss * weight_batch)
 
         self.critic.optimizer.zero_grad()
         weighted_loss.backward(retain_graph=True)
@@ -430,8 +444,8 @@ class DRRAgent:
         # update actor network
         loss = self.critic.network(
             [
-                torch.FloatTensor(batch_actions),
-                torch.FloatTensor(batch_states),
+                batch_actions,
+                batch_states,
             ]
         )
         loss = -loss.mean()
@@ -468,8 +482,8 @@ class DRRAgent:
                 ## SRM state
                 state = self.srm_ave(
                     [
-                        torch.FloatTensor(np.expand_dims(user_eb, axis=0)),
-                        torch.FloatTensor(np.expand_dims(items_eb, axis=0)),
+                        user_eb.unsqueeze(0),
+                        items_eb.unsqueeze(0),
                     ]
                 )
 
@@ -507,17 +521,12 @@ class DRRAgent:
         mean_ndcg = mean_ndcg / steps
 
         propfair = 0
-        total_exp = sum(env.group_count.values())
-
-        for group in range(self.n_groups):
-            _group = group + 1
-            if _group not in env.group_count:
-                env.group_count[_group] = 0
-
-            propfair += self.fairness_constraints[group] * math.log(
-                (1 + (env.group_count[_group] / total_exp if total_exp > 0 else 0))
+        total_exp = np.sum(list(env.group_count.values()))
+        if total_exp > 0:
+            propfair = np.sum(
+                np.array(self.fairness_constraints)
+                * np.log(1 + np.array(list(env.group_count.values())) / total_exp)
             )
-
         ufg = propfair / max(1 - mean_precision, 0.01)
 
         return (
