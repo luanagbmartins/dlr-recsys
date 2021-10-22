@@ -10,9 +10,10 @@ class CriticNetwork(nn.Module):
         super(CriticNetwork, self).__init__()
 
         self.act = nn.ReLU()
-        self.fc1 = nn.Linear(embedding_dim * srm_size, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc1 = nn.Linear(embedding_dim * srm_size, embedding_dim)
+        self.fc2 = nn.Linear(embedding_dim * 2, hidden_dim)
         self.fc3 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc4 = nn.Linear(hidden_dim, hidden_dim)
         self.out = nn.Linear(hidden_dim, 1)
 
         self.initialize()
@@ -21,6 +22,7 @@ class CriticNetwork(nn.Module):
         nn.init.kaiming_uniform_(self.fc1.weight)
         nn.init.kaiming_uniform_(self.fc2.weight)
         nn.init.kaiming_uniform_(self.fc3.weight)
+        nn.init.kaiming_uniform_(self.fc4.weight)
         nn.init.kaiming_uniform_(self.out.weight)
 
     def forward(self, x):
@@ -28,6 +30,7 @@ class CriticNetwork(nn.Module):
         s = torch.cat([x[0], s], 1)
         s = self.act(self.fc2(s))
         s = self.act(self.fc3(s))
+        s = self.act(self.fc4(s))
         s = self.out(s)
         return s
 

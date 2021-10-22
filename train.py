@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 from src.data.dataset import DatasetGeneration
 from src.environment.ml_env import OfflineEnv
-from src.train_model import MovieLens, MLEmbedding
+from src.train_model import MovieLens
 
 OUTPUT_PATH = os.path.join(os.getcwd(), "model")
 

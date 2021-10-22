@@ -248,7 +248,7 @@ class FairRecAgent:
                     ]
                     groups_eb.append(self.get_items_emb(groups_id))
 
-                total_exp = np.sum(list(self.group_count.values()))
+                total_exp = np.sum(list(self.env.group_count.values()))
                 fairness_allocation = (
                     (np.array(list(self.env.group_count.values())) / total_exp)
                     if total_exp > 0
@@ -306,7 +306,7 @@ class FairRecAgent:
                     ]
                     groups_eb.append(self.get_items_emb(groups_id))
 
-                total_exp = np.sum(list(self.group_count.values()))
+                total_exp = np.sum(list(self.env.group_count.values()))
                 fairness_allocation = (
                     (np.array(list(self.env.group_count.values())) / total_exp)
                     if total_exp > 0
@@ -522,7 +522,7 @@ class FairRecAgent:
                 ]
                 groups_eb.append(self.get_items_emb(groups_id))
 
-            total_exp = np.sum(list(self.group_count.values()))
+            total_exp = np.sum(list(env.group_count.values()))
             fairness_allocation = (
                 (np.array(list(env.group_count.values())) / total_exp)
                 if total_exp > 0
