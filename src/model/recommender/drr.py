@@ -118,6 +118,9 @@ class DRRAgent:
         else:
             raise "Embedding Model Type not supported"
 
+        self.env.reward_model = self.reward_model
+        self.env.device = self.device
+
         self.srm_ave = DRRAveStateRepresentation(self.embedding_dim).to(self.device)
 
         self.buffer = PriorityExperienceReplay(
@@ -168,10 +171,9 @@ class DRRAgent:
 
     def recommend_item(self, action, recommended_items, top_k=False, items_ids=None):
         if items_ids == None:
-            items_ids = np.array(
-                list(set(i for i in range(self.items_num)) - recommended_items)
-            )
+            items_ids = list(set(i for i in range(self.items_num)) - recommended_items)
 
+        items_ids = np.array(items_ids)
         items_ebs = self.get_items_emb(items_ids)
         action = torch.transpose(action, 1, 0).float()
 
@@ -179,7 +181,7 @@ class DRRAgent:
             item_indice = torch.argsort(
                 torch.transpose(torch.matmul(items_ebs, action), 1, 0)
             )[0][-top_k:]
-            return items_ids[item_indice]
+            return items_ids[item_indice.detach().cpu().numpy()]
         else:
             item_idx = torch.argmax(torch.matmul(items_ebs, action))
             return items_ids[item_idx]
@@ -460,7 +462,7 @@ class DRRAgent:
 
         return weighted_loss.detach().cpu().numpy(), loss.detach().cpu().numpy()
 
-    def evaluate(self, env, top_k=0):
+    def evaluate(self, env, top_k=0, available_items=None):
         # episodic reward
         episode_reward = 0
         correct_count = 0
@@ -492,7 +494,10 @@ class DRRAgent:
 
             ## Item
             recommended_item = self.recommend_item(
-                action, env.recommended_items, top_k=top_k
+                action,
+                env.recommended_items,
+                top_k=top_k,
+                items_ids=list(available_items),
             )
 
             # Calculate reward and observe new state (in env)
@@ -516,6 +521,9 @@ class DRRAgent:
             items_ids = next_items_ids
             episode_reward += reward
             steps += 1
+            available_items = (
+                available_items - set(recommended_item) if available_items else None
+            )
 
         mean_precision = mean_precision / steps
         mean_ndcg = mean_ndcg / steps
@@ -527,14 +535,8 @@ class DRRAgent:
                 np.array(self.fairness_constraints)
                 * np.log(1 + np.array(list(env.group_count.values())) / total_exp)
             )
-        ufg = propfair / max(1 - mean_precision, 0.01)
 
-        return (
-            mean_precision,
-            mean_ndcg,
-            propfair,
-            ufg,
-        )
+        return (mean_precision, mean_ndcg, propfair)
 
     def calculate_ndcg(self, rel, irel):
         dcg = 0

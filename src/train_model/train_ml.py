@@ -46,6 +46,7 @@ class MovieLens(luigi.Task):
     n_groups: int = luigi.IntParameter(default=4)
     fairness_constraints: list = luigi.ListParameter(default=[0.25, 0.25, 0.25, 0.25])
     top_k: int = luigi.IntParameter(default=10)
+    done_count: int = luigi.IntParameter(default=10)
 
     emb_model: str = luigi.Parameter(default="user_movie")
     embedding_network_weights: str = luigi.Parameter(default="")
@@ -109,15 +110,16 @@ class MovieLens(luigi.Task):
 
     def train_model(self, dataset):
         print("---------- Prepare Env")
+        print("------------ ", self.algorithm)
 
         env = ENV[self.algorithm](
-            dataset["train_users_dict"],
-            dataset["train_users_dict_positive_items"],
-            dataset["train_users_history_lens"],
-            len(self.fairness_constraints),
-            dataset["movies_groups"],
-            self.state_size,
-            self.fairness_constraints,
+            users_dict=dataset["train_users_dict"],
+            users_history_lens=dataset["train_users_history_lens"],
+            n_groups=self.n_groups,
+            movies_groups=dataset["movies_groups"],
+            state_size=self.state_size,
+            done_count=self.done_count,
+            fairness_constraints=self.fairness_constraints,
         )
 
         print("---------- Initialize Agent")
@@ -188,13 +190,13 @@ class MovieLens(luigi.Task):
 
             print("------------ ", self.algorithm)
             env = ENV[self.algorithm](
-                dataset["eval_users_dict"],
-                dataset["eval_users_dict_positive_items"],
-                dataset["eval_users_history_lens"],
-                len(self.fairness_constraints),
-                dataset["movies_groups"],
-                self.state_size,
-                self.fairness_constraints,
+                users_dict=dataset["eval_users_dict"],
+                users_history_lens=dataset["eval_users_history_lens"],
+                n_groups=self.n_groups,
+                movies_groups=dataset["movies_groups"],
+                state_size=self.state_size,
+                done_count=self.done_count,
+                fairness_constraints=self.fairness_constraints,
             )
             available_users = env.available_users
 
@@ -233,25 +235,24 @@ class MovieLens(luigi.Task):
             )
             for user_id in available_users:
                 eval_env = ENV[self.algorithm](
-                    dataset["eval_users_dict"],
-                    dataset["eval_users_dict_positive_items"],
-                    dataset["eval_users_history_lens"],
-                    len(self.fairness_constraints),
-                    dataset["movies_groups"],
-                    self.state_size,
-                    self.fairness_constraints,
+                    users_dict=dataset["eval_users_dict"],
+                    users_history_lens=dataset["eval_users_history_lens"],
+                    n_groups=10,
+                    movies_groups=dataset["movies_groups"],
+                    state_size=self.state_size,
+                    done_count=self.done_count,
+                    fairness_constraints=self.fairness_constraints,
                     fix_user_id=user_id,
                 )
 
                 recommender.env = eval_env
 
-                precision, ndcg, propfair, ufg = recommender.evaluate(
+                precision, ndcg, propfair = recommender.evaluate(
                     eval_env, top_k=self.top_k
                 )
                 sum_precision += precision
                 sum_ndcg += ndcg
                 sum_propfair += propfair
-                sum_ufg += ufg
 
                 del eval_env
 
@@ -259,7 +260,11 @@ class MovieLens(luigi.Task):
             print("- precision@: ", sum_precision / len(dataset["eval_users_dict"]))
             print("- ndcg@: ", sum_ndcg / len(dataset["eval_users_dict"]))
             print("- propfair: ", sum_propfair / len(dataset["eval_users_dict"]))
-            print("- ufg: ", sum_ufg / len(dataset["eval_users_dict"]))
+            print(
+                "- ufg: ",
+                sum_propfair
+                / max(1 - (sum_precision / len(dataset["eval_users_dict"])), 0.01),
+            )
             print()
 
             if self.use_wandb:
@@ -272,7 +277,10 @@ class MovieLens(luigi.Task):
                         "cp_evaluation_propfair": sum_propfair
                         / len(dataset["eval_users_dict"]),
                         "cp_evaluation_cvr": sum_cvr / len(dataset["eval_users_dict"]),
-                        "cp_evaluation_ufg": sum_ufg / len(dataset["eval_users_dict"]),
+                        "cp_evaluation_ufg": sum_propfair
+                        / max(
+                            1 - (sum_precision / len(dataset["eval_users_dict"])), 0.01
+                        ),
                     }
                 )
 

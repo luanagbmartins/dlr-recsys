@@ -1,3 +1,4 @@
+import torch
 import numpy as np
 
 
@@ -5,11 +6,11 @@ class OfflineEnv(object):
     def __init__(
         self,
         users_dict,
-        users_dict_positive_items,
         users_history_lens,
         n_groups,
         movies_groups,
         state_size,
+        done_count,
         fairness_constraints,
         fix_user_id=None,
         reward_model=None,
@@ -38,7 +39,7 @@ class OfflineEnv(object):
         self.items = [data[0] for data in self.users_dict[self.user][: self.state_size]]
         self.done = False
         self.recommended_items = set(self.items)
-        self.done_count = 3000
+        self.done_count = 1000
 
         self.n_groups = n_groups
         self.movies_groups = movies_groups
@@ -61,7 +62,7 @@ class OfflineEnv(object):
         else:
             return 1.0 if self.user_items[action] >= 4 else -1.0
 
-    def reset(self):
+    def reset(self, reset_fairness_status=True):
         self.user = (
             self.fix_user_id
             if self.fix_user_id
@@ -71,12 +72,15 @@ class OfflineEnv(object):
         self.items = [data[0] for data in self.users_dict[self.user][: self.state_size]]
         self.done = False
         self.recommended_items = set(self.items)
-        self.group_count = {k: 0 for k in range(1, self.n_groups + 1)}
+        self.group_count = (
+            {k: 0 for k in range(1, self.n_groups + 1)}
+            if reset_fairness_status
+            else self.group_count
+        )
         self.total_recommended_items = 0
         return self.user, self.items, self.done
 
     def step(self, action, top_k=False):
-
         reward = -1
 
         if top_k:
@@ -104,9 +108,11 @@ class OfflineEnv(object):
                                 torch.tensor([self.user]).long().to(self.device),
                                 torch.tensor([act]).long().to(self.device),
                             )
+                            .detach()
                             .cpu()
                             .numpy()[0]
                         )
+                        rewards.append(_reward)
                         if _reward > 0:
                             correctly_recommended.append(act)
                     else:
@@ -143,8 +149,9 @@ class OfflineEnv(object):
                     reward = (
                         self.reward_model.predict(
                             torch.tensor([self.user]).long().to(self.device),
-                            torch.tensor([act]).long().to(self.device),
+                            torch.tensor([action]).long().to(self.device),
                         )
+                        .detach()
                         .cpu()
                         .numpy()[0]
                     )
@@ -155,10 +162,11 @@ class OfflineEnv(object):
 
             if reward > 0:
                 self.items = self.items[1:] + [action]
+
             self.recommended_items.add(action)
 
         if (
-            len(self.recommended_items) > self.done_count
+            self.total_recommended_items > self.done_count
             or len(self.recommended_items)
             >= self.users_history_lens[list(self.users_dict.keys()).index(self.user)]
         ):
@@ -171,23 +179,27 @@ class OfflineFairEnv(OfflineEnv):
     def __init__(
         self,
         users_dict,
-        users_dict_positive_items,
         users_history_lens,
+        n_groups,
         movies_groups,
         state_size,
+        done_count,
         fairness_constraints,
         fix_user_id=None,
         reward_model=None,
+        device="cpu",
     ):
         super().__init__(
             users_dict,
-            users_dict_positive_items,
             users_history_lens,
+            n_groups,
             movies_groups,
             state_size,
+            done_count,
             fairness_constraints,
             fix_user_id,
             reward_model,
+            device,
         )
 
     def step(self, action, top_k=False):
@@ -231,6 +243,7 @@ class OfflineFairEnv(OfflineEnv):
                                 torch.tensor([self.user]).long().to(self.device),
                                 torch.tensor([act]).long().to(self.device),
                             )
+                            .detach()
                             .cpu()
                             .numpy()[0]
                         )
@@ -300,6 +313,7 @@ class OfflineFairEnv(OfflineEnv):
                             torch.tensor([self.user]).long().to(self.device),
                             torch.tensor([action]).long().to(self.device),
                         )
+                        .detach()
                         .cpu()
                         .numpy()[0]
                     )
