@@ -12,6 +12,8 @@ from obp.utils import check_array
 from sklearn.utils import check_random_state
 from sklearn.utils import check_scalar
 
+import torch
+
 
 @dataclass
 class EpsilonGreedy(BaseContextFreePolicy):
@@ -130,16 +132,22 @@ class BaseLinPolicy(BaseContextualPolicy):
     def __post_init__(self) -> None:
         """Initialize class."""
         super().__post_init__()
-        self.theta_hat = np.zeros((self.dim, self.n_actions))
-        self.A_inv = np.concatenate(
-            [np.identity(self.dim) for _ in np.arange(self.n_actions)]
-        ).reshape(self.n_actions, self.dim, self.dim)
-        self.b = np.zeros((self.dim, self.n_actions))
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.A_inv_temp = np.concatenate(
-            [np.identity(self.dim) for _ in np.arange(self.n_actions)]
-        ).reshape(self.n_actions, self.dim, self.dim)
-        self.b_temp = np.zeros((self.dim, self.n_actions))
+        self.theta_hat = torch.zeros(self.dim, self.n_actions, device=self.device)
+
+        self.A_inv = torch.reshape(
+            torch.cat([torch.eye(self.dim) for _ in torch.arange(self.n_actions)]),
+            (self.n_actions, self.dim, self.dim),
+        ).to(self.device)
+        self.b = torch.zeros(self.dim, self.n_actions, device=self.device)
+
+        self.A_inv_temp = torch.reshape(
+            torch.cat([torch.eye(self.dim) for _ in torch.arange(self.n_actions)]),
+            (self.n_actions, self.dim, self.dim),
+        ).to(self.device)
+
+        self.b_temp = torch.zeros(self.dim, self.n_actions, device=self.device)
 
     def update_params(self, action: int, reward: float, context: np.ndarray) -> None:
         """Update policy parameters.
@@ -159,18 +167,24 @@ class BaseLinPolicy(BaseContextualPolicy):
         self.n_trial += 1
         self.action_counts[action] += 1
         # update the inverse matrix by the Woodbury formula
+        # context = torch.tensor(context, device=self.device)
         self.A_inv_temp[action] -= (
-            self.A_inv_temp[action]
-            @ context.T
-            @ context
-            @ self.A_inv_temp[action]
-            / (1 + context @ self.A_inv_temp[action] @ context.T)[0][0]
+            torch.matmul(
+                torch.matmul(torch.matmul(self.A_inv_temp[action], context.T), context),
+                self.A_inv_temp[action],
+            )
+            / (
+                1
+                + torch.matmul(
+                    torch.matmul(context, self.A_inv_temp[action]), context.T
+                )
+            )[0][0]
         )
         self.b_temp[:, action] += reward * context.flatten()
         if self.n_trial % self.batch_size == 0:
             self.A_inv, self.b = (
-                np.copy(self.A_inv_temp),
-                np.copy(self.b_temp),
+                self.A_inv_temp.clone(),
+                self.b_temp.clone(),
             )
 
 
@@ -208,7 +222,7 @@ class LinUCB(BaseLinPolicy):
         """Initialize class."""
         check_scalar(self.epsilon, "epsilon", float, min_val=0.0)
         self.policy_name = f"linear_ucb_{self.epsilon}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
-        self.group_count: dict = {}
+        self.group_count: dict = {k: 0 for k in range(1, self.n_group + 1)}
 
         super().__post_init__()
 
@@ -227,23 +241,27 @@ class LinUCB(BaseLinPolicy):
         if context.shape[0] != 1:
             raise ValueError("Expected `context.shape[0] == 1`, but found it False")
 
-        self.theta_hat = np.concatenate(
+        context = torch.tensor(context, device=self.device)
+        self.theta_hat = torch.cat(
             [
-                self.A_inv[i] @ self.b[:, i][:, np.newaxis]
+                torch.matmul(self.A_inv[i], self.b[:, i].unsqueeze(1))
                 for i in np.arange(self.n_actions)
             ],
             axis=1,
         )  # dim * n_actions
-        sigma_hat = np.concatenate(
+        sigma_hat = torch.cat(
             [
-                np.sqrt(context @ self.A_inv[i] @ context.T)
+                torch.sqrt(
+                    torch.matmul(torch.matmul(context, self.A_inv[i]), context.T)
+                )
                 for i in np.arange(self.n_actions)
             ],
             axis=1,
         )  # 1 * n_actions
-        ucb_scores = (context @ self.theta_hat + self.epsilon * sigma_hat).flatten()
-        actions = ucb_scores.argsort()[::-1][: self.len_list]
-        self.update_fairness_status(actions)
+        ucb_scores = (
+            torch.matmul(context, self.theta_hat) + self.epsilon * sigma_hat
+        ).flatten()
+        actions = ucb_scores.argsort().cpu().numpy()[::-1][: self.len_list]
 
         return actions
 

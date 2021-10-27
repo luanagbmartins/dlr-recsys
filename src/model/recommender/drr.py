@@ -226,6 +226,10 @@ class DRRAgent:
 
         episodic_precision_history = []
 
+        sum_precision = 0
+        sum_ndcg = 0
+        sum_propfair = 0
+
         for episode in tqdm(range(max_episode_num)):
 
             # episodic reward
@@ -235,6 +239,8 @@ class DRRAgent:
             critic_loss = 0
             actor_loss = 0
             mean_action = 0
+            mean_precision = 0
+            mean_ndcg = 0
 
             # environment
             user_id, items_ids, done = self.env.reset()
@@ -313,15 +319,19 @@ class DRRAgent:
                 )
                 steps += 1
 
-                if reward > 0:
-                    correct_count += 1
+                if top_k:
+                    correct_list = [1 if r > 0 else 0 for r in reward]
+                    # ndcg
+                    dcg, idcg = self.calculate_ndcg(
+                        correct_list, [1 for _ in range(len(reward))]
+                    )
+                    mean_ndcg += dcg / idcg
 
-                print("----------")
-                print("- recommended items: ", self.env.total_recommended_items)
-                print("- group count: ", self.env.group_count)
-                # print("- epsilon: ", self.epsilon)
-                print("- reward: ", reward)
-                print()
+                    # precision
+                    correct_num = top_k - correct_list.count(0)
+                    mean_precision += correct_num / top_k
+                else:
+                    mean_precision += 1 if reward > 0 else 0
 
                 if done:
                     propfair = 0
@@ -335,32 +345,25 @@ class DRRAgent:
                                 / total_exp
                             )
                         )
-                    cvr = correct_count / steps
-                    precision = int(correct_count / steps * 100)
 
-                    print("----------")
-                    print("- precision: ", precision)
-                    print("- total_reward: ", episode_reward)
-                    print("- critic_loss: ", critic_loss / steps)
-                    print("- actor_loss: ", actor_loss / steps)
-                    print("- mean_action: ", mean_action / steps)
-                    print("- propfair: ", propfair)
-                    print("- cvr: ", cvr)
-                    print("- ufg: ", propfair / max(1 - cvr, 0.01))
-                    print()
+                    sum_precision += mean_precision / steps
+                    sum_ndcg += mean_ndcg / steps
+                    sum_propfair += propfair
 
                     if self.use_wandb:
                         wandb.log(
                             {
-                                "precision": precision,
+                                "precision": (mean_precision / steps) * 100,
+                                "ndcg": mean_ndcg / steps,
                                 "total_reward": episode_reward,
                                 # "epsilone": self.epsilon,
                                 "critic_loss": critic_loss / steps,
                                 "actor_loss": actor_loss / steps,
                                 "mean_action": mean_action / steps,
                                 "propfair": propfair,
-                                "cvr": cvr,
-                                "ufg": propfair / max(1 - cvr, 0.01),
+                                "cvr": mean_precision / steps,
+                                "ufg": propfair
+                                / max(1 - (mean_precision / steps), 0.01),
                             }
                         )
                     episodic_precision_history.append(precision)
@@ -378,6 +381,12 @@ class DRRAgent:
                     os.path.join(self.model_path, "actor_{}.h5".format(episode + 1)),
                     os.path.join(self.model_path, "critic_{}.h5".format(episode + 1)),
                 )
+
+        return (
+            sum_precision / max_episode_num,
+            sum_ndcg / max_episode_num,
+            sum_propfair / max_episode_num,
+        )
 
     def update_model(self):
         # sample a minibatch
@@ -515,7 +524,7 @@ class DRRAgent:
                 correct_num = top_k - correct_list.count(0)
                 mean_precision += correct_num / top_k
             else:
-                mean_precision = reward
+                mean_precision += 1 if reward > 0 else 0
 
             reward = np.sum(reward)
             items_ids = next_items_ids

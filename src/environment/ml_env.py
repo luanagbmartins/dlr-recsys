@@ -348,3 +348,219 @@ class OfflineFairEnv(OfflineEnv):
             self.done = True
 
         return self.items, reward, self.done, self.recommended_items
+
+
+class SimulatedEnv(OfflineEnv):
+    def __init__(
+        self,
+        users_dict,
+        users_history_lens,
+        n_groups,
+        movies_groups,
+        state_size,
+        done_count,
+        fairness_constraints,
+        fix_user_id=None,
+        reward_model=None,
+        device="cpu",
+    ):
+        super().__init__(
+            users_dict,
+            users_history_lens,
+            n_groups,
+            movies_groups,
+            state_size,
+            done_count,
+            fairness_constraints,
+            fix_user_id,
+            reward_model,
+            device,
+        )
+
+    def step(self, action, top_k=False):
+        reward = -1
+
+        if top_k:
+            correctly_recommended = []
+            rewards = []
+            for act in action:
+                self.group_count[self.movies_groups[act]] += 1
+                self.total_recommended_items += 1
+
+                if act not in self.recommended_items:
+                    _reward = (
+                        self.reward_model.predict(
+                            torch.tensor([self.user]).long().to(self.device),
+                            torch.tensor([act]).long().to(self.device),
+                        )
+                        .detach()
+                        .cpu()
+                        .numpy()[0]
+                    )
+                    rewards.append(_reward)
+                    if _reward > 0:
+                        correctly_recommended.append(act)
+                else:
+                    rewards.append(-1)
+
+                self.recommended_items.add(act)
+
+            if max(rewards) > 0:
+                self.items = (
+                    self.items[len(correctly_recommended) :] + correctly_recommended
+                )
+                self.items = self.items[-self.state_size :]
+            reward = rewards
+
+        else:
+            self.group_count[self.movies_groups[action]] += 1
+            self.total_recommended_items += 1
+
+            if action not in self.recommended_items:
+                reward = (
+                    self.reward_model.predict(
+                        torch.tensor([self.user]).long().to(self.device),
+                        torch.tensor([action]).long().to(self.device),
+                    )
+                    .detach()
+                    .cpu()
+                    .numpy()[0]
+                )
+            else:
+                reward = -1
+
+            if reward > 0:
+                self.items = self.items[1:] + [action]
+
+            self.recommended_items.add(action)
+
+        if (
+            self.total_recommended_items > self.done_count
+            or len(self.recommended_items)
+            >= self.users_history_lens[list(self.users_dict.keys()).index(self.user)]
+        ):
+            self.done = True
+
+        return self.items, reward, self.done, self.recommended_items
+
+
+class SimulatedFairEnv(OfflineEnv):
+    def __init__(
+        self,
+        users_dict,
+        users_history_lens,
+        n_groups,
+        movies_groups,
+        state_size,
+        done_count,
+        fairness_constraints,
+        fix_user_id=None,
+        reward_model=None,
+        device="cpu",
+    ):
+        super().__init__(
+            users_dict,
+            users_history_lens,
+            n_groups,
+            movies_groups,
+            state_size,
+            done_count,
+            fairness_constraints,
+            fix_user_id,
+            reward_model,
+            device,
+        )
+
+    def step(self, action, top_k=False):
+
+        reward = -1
+        if top_k:
+            correctly_recommended = []
+            rewards = []
+            for act in action:
+
+                group = self.movies_groups[act]
+                self.group_count[group] += 1
+                self.total_recommended_items += 1
+
+                if act not in self.recommended_items:
+                    _reward = (
+                        self.reward_model.predict(
+                            torch.tensor([self.user]).long().to(self.device),
+                            torch.tensor([act]).long().to(self.device),
+                        )
+                        .detach()
+                        .cpu()
+                        .numpy()[0]
+                    )
+                    if _reward > 0:
+                        correctly_recommended.append(act)
+                        rewards.append(
+                            (
+                                self.fairness_constraints[group - 1]
+                                / np.sum(self.fairness_constraints)
+                            )
+                            - (
+                                self.group_count[group]
+                                / np.sum(list(self.group_count.values()))
+                            )
+                            + 1
+                        )
+                    else:
+                        rewards.append(-1)
+                else:
+                    rewards.append(-1)
+
+                self.recommended_items.add(act)
+
+            if max(rewards) > 0:
+                self.items = (
+                    self.items[len(correctly_recommended) :] + correctly_recommended
+                )
+                self.items = self.items[-self.state_size :]
+            reward = rewards
+
+        else:
+            group = self.movies_groups[action]
+            self.group_count[group] += 1
+            self.total_recommended_items += 1
+
+            if action not in self.recommended_items:
+                _reward = (
+                    self.reward_model.predict(
+                        torch.tensor([self.user]).long().to(self.device),
+                        torch.tensor([action]).long().to(self.device),
+                    )
+                    .detach()
+                    .cpu()
+                    .numpy()[0]
+                )
+                if _reward > 0:
+                    self.items = self.items[1:] + [action]
+                    reward = (
+                        (
+                            self.fairness_constraints[group - 1]
+                            / np.sum(self.fairness_constraints)
+                        )
+                        - (
+                            self.group_count[group]
+                            / np.sum(list(self.group_count.values()))
+                        )
+                        + 1
+                    )
+                else:
+                    reward = -1
+
+            else:
+                reward = -1
+
+            self.recommended_items.add(action)
+
+        if (
+            len(self.recommended_items) > self.done_count
+            or len(self.recommended_items)
+            >= self.users_history_lens[list(self.users_dict.keys()).index(self.user)]
+        ):
+            self.done = True
+
+        return self.items, reward, self.done, self.recommended_items
