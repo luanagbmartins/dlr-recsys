@@ -12,8 +12,6 @@ from obp.utils import check_array
 from sklearn.utils import check_random_state
 from sklearn.utils import check_scalar
 
-import torch
-
 
 @dataclass
 class EpsilonGreedy(BaseContextFreePolicy):
@@ -105,86 +103,63 @@ class EpsilonGreedy(BaseContextFreePolicy):
 @dataclass
 class BaseLinPolicy(BaseContextualPolicy):
     """Base class for contextual bandit policies using linear regression.
-
     Parameters
     ------------
     dim: int
         Number of dimensions of context vectors.
-
     n_actions: int
         Number of actions.
-
     len_list: int, default=1
         Length of a list of actions recommended in each impression.
         When Open Bandit Dataset is used, 3 should be set.
-
     batch_size: int, default=1
         Number of samples used in a batch parameter update.
-
     random_state: int, default=None
         Controls the random seed in sampling actions.
-
     epsilon: float, default=0.
         Exploration hyperparameter that must take value in the range of [0., 1.].
-
     """
 
     def __post_init__(self) -> None:
         """Initialize class."""
         super().__post_init__()
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.theta_hat = np.zeros((self.dim, self.n_actions))
+        self.A_inv = np.concatenate(
+            [np.identity(self.dim) for _ in np.arange(self.n_actions)]
+        ).reshape(self.n_actions, self.dim, self.dim)
+        self.b = np.zeros((self.dim, self.n_actions))
 
-        self.theta_hat = torch.zeros(self.dim, self.n_actions, device=self.device)
-
-        self.A_inv = torch.reshape(
-            torch.cat([torch.eye(self.dim) for _ in torch.arange(self.n_actions)]),
-            (self.n_actions, self.dim, self.dim),
-        ).to(self.device)
-        self.b = torch.zeros(self.dim, self.n_actions, device=self.device)
-
-        self.A_inv_temp = torch.reshape(
-            torch.cat([torch.eye(self.dim) for _ in torch.arange(self.n_actions)]),
-            (self.n_actions, self.dim, self.dim),
-        ).to(self.device)
-
-        self.b_temp = torch.zeros(self.dim, self.n_actions, device=self.device)
+        self.A_inv_temp = np.concatenate(
+            [np.identity(self.dim) for _ in np.arange(self.n_actions)]
+        ).reshape(self.n_actions, self.dim, self.dim)
+        self.b_temp = np.zeros((self.dim, self.n_actions))
 
     def update_params(self, action: int, reward: float, context: np.ndarray) -> None:
         """Update policy parameters.
-
         Parameters
         ------------
         action: int
             Selected action by the policy.
-
         reward: float
             Observed reward for the chosen action and position.
-
         context: array-like, shape (1, dim_context)
             Observed context vector.
-
         """
         self.n_trial += 1
         self.action_counts[action] += 1
         # update the inverse matrix by the Woodbury formula
-        # context = torch.tensor(context, device=self.device)
         self.A_inv_temp[action] -= (
-            torch.matmul(
-                torch.matmul(torch.matmul(self.A_inv_temp[action], context.T), context),
-                self.A_inv_temp[action],
-            )
-            / (
-                1
-                + torch.matmul(
-                    torch.matmul(context, self.A_inv_temp[action]), context.T
-                )
-            )[0][0]
+            self.A_inv_temp[action]
+            @ context.T
+            @ context
+            @ self.A_inv_temp[action]
+            / (1 + context @ self.A_inv_temp[action] @ context.T)[0][0]
         )
         self.b_temp[:, action] += reward * context.flatten()
         if self.n_trial % self.batch_size == 0:
             self.A_inv, self.b = (
-                self.A_inv_temp.clone(),
-                self.b_temp.clone(),
+                np.copy(self.A_inv_temp),
+                np.copy(self.b_temp),
             )
 
 
@@ -222,7 +197,7 @@ class LinUCB(BaseLinPolicy):
         """Initialize class."""
         check_scalar(self.epsilon, "epsilon", float, min_val=0.0)
         self.policy_name = f"linear_ucb_{self.epsilon}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
-        self.group_count: dict = {k: 0 for k in range(1, self.n_group + 1)}
+        self.group_count: dict = {}
 
         super().__post_init__()
 
@@ -241,27 +216,23 @@ class LinUCB(BaseLinPolicy):
         if context.shape[0] != 1:
             raise ValueError("Expected `context.shape[0] == 1`, but found it False")
 
-        context = torch.tensor(context, device=self.device)
-        self.theta_hat = torch.cat(
+        self.theta_hat = np.concatenate(
             [
-                torch.matmul(self.A_inv[i], self.b[:, i].unsqueeze(1))
+                self.A_inv[i] @ self.b[:, i][:, np.newaxis]
                 for i in np.arange(self.n_actions)
             ],
             axis=1,
         )  # dim * n_actions
-        sigma_hat = torch.cat(
+        sigma_hat = np.concatenate(
             [
-                torch.sqrt(
-                    torch.matmul(torch.matmul(context, self.A_inv[i]), context.T)
-                )
+                np.sqrt(context @ self.A_inv[i] @ context.T)
                 for i in np.arange(self.n_actions)
             ],
             axis=1,
         )  # 1 * n_actions
-        ucb_scores = (
-            torch.matmul(context, self.theta_hat) + self.epsilon * sigma_hat
-        ).flatten()
-        actions = ucb_scores.argsort().cpu().numpy()[::-1][: self.len_list]
+        ucb_scores = (context @ self.theta_hat + self.epsilon * sigma_hat).flatten()
+        actions = ucb_scores.argsort()[::-1][: self.len_list]
+        self.update_fairness_status(actions)
 
         return actions
 
@@ -357,12 +328,8 @@ class WFairLinUCB(LinUCB):
             np.array(list(self.fairness_weight.values()))
             / np.sum(np.array(list(self.fairness_weight.values())))
         ) - (
-            (
-                np.array(list(self.group_count.values()))
-                / np.sum(list(self.group_count.values()))
-            )
-            if np.sum(list(self.group_count.values())) > 0
-            else 0
+            (np.array(list(self.group_count.values()))
+            / np.sum(list(self.group_count.values()))) if np.sum(list(self.group_count.values())) > 0 else 0
         )
 
         _wfair = [wfair[value - 1] for value in self.item_group.values()]
@@ -404,7 +371,6 @@ class FairLinUCB(LinUCB):
     n_group: int = 0
     item_group: dict = field(default_factory=dict)
     fairness_weight: dict = field(default_factory=dict)
-    fairness_constraint: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Initialize class."""
@@ -416,9 +382,9 @@ class FairLinUCB(LinUCB):
         super().__post_init__()
 
     def calculate_score_fairness(self) -> np.array:
-        fair = np.array(list(self.fairness_constraint.values())) * (
-            np.sum(np.array(list(self.arm_count.values()))) - 1
-        ) - np.array(list(self.arm_count.values()))
+        fair = np.array(list(self.fairness_weight.value())) * (
+            np.sum(np.array(list(self.action_counts.value()))) - 1
+        ) - np.array(list(self.action_counts.value()))
 
         return fair[~(fair < self.alpha)]
 
@@ -439,7 +405,7 @@ class FairLinUCB(LinUCB):
 
         A = self.calculate_score_fairness()
         if len(A) > 0:
-            actions = A.argsort()[::-1][: self.len_list]
+            actions = [int(np.argmax(arm_scores))]
         else:
             self.theta_hat = np.concatenate(
                 [

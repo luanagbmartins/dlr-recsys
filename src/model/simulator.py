@@ -9,11 +9,12 @@ from obp.policy.policy_type import PolicyType
 from obp.types import BanditFeedback, BanditPolicy
 from obp.utils import check_bandit_feedback_inputs
 from obp.utils import convert_to_action_dist
-import torch
 
 
 def run_bandit_simulation(
-    bandit_feedback, policy: BanditPolicy, epochs: int, dim_context: int
+    bandit_feedback: BanditFeedback,
+    policy: BanditPolicy,
+    epochs: int,
 ):
 
     """Run an online bandit algorithm on the given logged bandit feedback data.
@@ -28,25 +29,23 @@ def run_bandit_simulation(
     action_dist: array-like, shape (n_rounds, n_actions, len_list)
         Action choice probabilities (can be deterministic).
     """
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # for key_ in ["action", "position", "reward", "pscore", "context"]:
-    #     if key_ not in bandit_feedback:
-    #         raise RuntimeError(f"Missing key of {key_} in 'bandit_feedback'.")
-    # check_bandit_feedback_inputs(
-    #     context=bandit_feedback["context"],
-    #     action=bandit_feedback["action"],
-    #     reward=bandit_feedback["reward"],
-    #     position=bandit_feedback["position"],
-    #     pscore=bandit_feedback["pscore"],
-    # )
+    for key_ in ["action", "position", "reward", "pscore", "context"]:
+        if key_ not in bandit_feedback:
+            raise RuntimeError(f"Missing key of {key_} in 'bandit_feedback'.")
+    check_bandit_feedback_inputs(
+        context=bandit_feedback["context"],
+        action=bandit_feedback["action"],
+        reward=bandit_feedback["reward"],
+        position=bandit_feedback["position"],
+        pscore=bandit_feedback["pscore"],
+    )
 
     policy_ = policy
-    # dim_context = bandit_feedback["context"].shape[1]
-    # if bandit_feedback["position"] is None:
-    #     bandit_feedback["position"] = np.zeros_like(
-    #         bandit_feedback["action"], dtype=int
-    #     )
+    dim_context = bandit_feedback["context"].shape[1]
+    if bandit_feedback["position"] is None:
+        bandit_feedback["position"] = np.zeros_like(
+            bandit_feedback["action"], dtype=int
+        )
 
     # Instantiate trackers
     aligned_time_steps = 0
@@ -62,12 +61,15 @@ def run_bandit_simulation(
         selected_actions_list = list()
         policy_.clear_group_count()
 
-        for action_, reward_, position_, context_ in tqdm(bandit_feedback):
-
-            action_ = action_.to(device)
-            reward_ = reward_.to(device)
-            position_ = position_.to(device)
-            context_ = context_.to(device)
+        for action_, reward_, position_, context_ in tqdm(
+            zip(
+                bandit_feedback["action"],
+                bandit_feedback["reward"],
+                bandit_feedback["position"],
+                bandit_feedback["context"],
+            ),
+            total=bandit_feedback["n_rounds"],
+        ):
 
             # select a list of actions
             if policy_.policy_type == PolicyType.CONTEXT_FREE:

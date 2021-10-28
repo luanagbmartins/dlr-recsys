@@ -238,9 +238,10 @@ class MovieLensDataset(BaseRealBanditDataset):
         )
 
         self.action = self.data["movie_id"].values
-        self.reward = (
-            self.data["rating"].apply(lambda x: 0 if x < 4 else 1).values
-        )  # 0.5 * (self.data["rating"].values - 3)
+        self.reward = 0.5 * (self.data["rating"].values - 3)
+        # (
+        #     self.data["rating"].apply(lambda x: 0 if x < 4 else 1).values
+        # )  # 0.5 * (self.data["rating"].values - 3)
         self.pscore = np.ones_like(self.action, dtype=int) * (
             1 / (self.item_context["movie_id"].max() + 1)
         )
