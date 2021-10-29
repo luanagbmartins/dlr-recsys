@@ -39,7 +39,7 @@ class OfflineEnv(object):
         self.items = [data[0] for data in self.users_dict[self.user][: self.state_size]]
         self.done = False
         self.recommended_items = set(self.items)
-        self.done_count = 1000
+        self.done_count = done_count
 
         self.n_groups = n_groups
         self.movies_groups = movies_groups
@@ -163,6 +163,7 @@ class OfflineEnv(object):
                 self.items = self.items[1:] + [action]
 
             self.recommended_items.add(action)
+
 
         if (
             self.total_recommended_items > self.done_count
