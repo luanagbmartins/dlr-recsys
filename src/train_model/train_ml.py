@@ -160,6 +160,7 @@ class MovieLens(luigi.Task):
         recommender.save_model(
             self.output()["actor_model"].path,
             self.output()["critic_model"].path,
+            os.path.join(self.output_path, "buffer.pkl"),
         )
         print("---------- Finish Saving Model")
 

@@ -227,6 +227,7 @@ class FairRecAgent:
         sum_precision = 0
         sum_ndcg = 0
         sum_propfair = 0
+        sum_reward = 0
 
         for episode in tqdm(range(max_episode_num)):
 
@@ -299,8 +300,6 @@ class FairRecAgent:
                 next_items_ids, reward, done, _ = self.env.step(
                     recommended_item, top_k=top_k
                 )
-                if top_k:
-                    reward = np.sum(reward)
 
                 # get next_state
                 next_items_eb = self.get_items_emb(next_items_ids)
@@ -337,7 +336,7 @@ class FairRecAgent:
                 self.buffer.append(
                     state.detach().cpu().numpy(),
                     action.detach().cpu().numpy(),
-                    reward,
+                    np.sum(reward) if top_k else reward,
                     next_state.detach().cpu().numpy(),
                     done,
                 )
@@ -348,7 +347,7 @@ class FairRecAgent:
                     actor_loss += _actor_loss
 
                 items_ids = next_items_ids
-                episode_reward += reward
+                episode_reward += np.sum(reward) if top_k else reward
                 mean_action += np.sum(action[0].cpu().numpy()) / (
                     len(action[0].cpu().numpy())
                 )
@@ -385,6 +384,7 @@ class FairRecAgent:
                     sum_precision += mean_precision / steps
                     sum_ndcg += mean_ndcg / steps
                     sum_propfair += propfair
+                    sum_reward += episode_reward
 
                     if self.use_wandb:
                         wandb.log(
@@ -402,7 +402,7 @@ class FairRecAgent:
                                 / max(1 - (mean_precision / steps), 0.01),
                             }
                         )
-                    episodic_precision_history.append(precision)
+                    episodic_precision_history.append((mean_precision / steps) * 100)
 
             if (episode + 1) % 50 == 0:
                 plt.plot(episodic_precision_history)
@@ -422,6 +422,7 @@ class FairRecAgent:
             sum_precision / max_episode_num,
             sum_ndcg / max_episode_num,
             sum_propfair / max_episode_num,
+            sum_reward / max_episode_num,
         )
 
     def update_model(self):
@@ -613,9 +614,14 @@ class FairRecAgent:
 
         return dcg, idcg
 
-    def save_model(self, actor_path, critic_path):
+    def save_model(self, actor_path, critic_path, buffer_path=None):
         self.actor.save_weights(actor_path)
         self.critic.save_weights(critic_path)
+        if buffer_path:
+            import pickle
+
+            with open(buffer_path, "wb") as f:
+                pickle.dump(f)
 
     def load_model(self, actor_path, critic_path):
         self.actor.load_weights(actor_path)

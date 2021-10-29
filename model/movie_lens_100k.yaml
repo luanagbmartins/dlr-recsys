@@ -8,9 +8,9 @@ model_train:
     state_size: 5
     srm_size: 3
     max_eps_num: 30000
-    actor_hidden_dim: 512
+    actor_hidden_dim: 1000
     actor_learning_rate: 0.0001
-    critic_hidden_dim: 512
+    critic_hidden_dim: 1000
     critic_learning_rate: 0.001
     discount_factor: 0.9
     tau: 0.01

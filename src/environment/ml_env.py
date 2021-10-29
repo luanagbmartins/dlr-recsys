@@ -102,7 +102,6 @@ class OfflineEnv(object):
                     and act not in self.recommended_items
                 ):
                     if self.reward_model:
-                        # TODO model.predict
                         _reward = (
                             self.reward_model.predict(
                                 torch.tensor([self.user]).long().to(self.device),

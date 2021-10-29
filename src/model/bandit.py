@@ -47,20 +47,24 @@ class EpsilonGreedy(BaseContextFreePolicy):
 
         super().__post_init__()
 
-    def select_action(self) -> np.ndarray:
+    def select_action(self, available_items=None) -> np.ndarray:
         """Select a list of actions.
         Returns
         ----------
         selected_actions: array-like, shape (len_list, )
             List of selected actions.
         """
+        predicted_rewards = None
+        n_actions = available_items if available_items else self.n_actions
+
         if (self.random_.rand() > self.epsilon) and (self.action_counts.min() > 0):
             predicted_rewards = self.reward_counts / self.action_counts
-            actions = predicted_rewards.argsort()[::-1][: self.len_list]
+            predicted_rewards = predicted_rewards.argsort()
+            if available_items:
+                predicted_rewards = predicted_rewards[available_items]
+            actions = predicted_rewards[::-1][: self.len_list]
         else:
-            actions = self.random_.choice(
-                self.n_actions, size=self.len_list, replace=False
-            )
+            actions = self.random_.choice(n_actions, size=self.len_list, replace=False)
 
         self.update_fairness_status(actions)
         return actions
@@ -328,8 +332,12 @@ class WFairLinUCB(LinUCB):
             np.array(list(self.fairness_weight.values()))
             / np.sum(np.array(list(self.fairness_weight.values())))
         ) - (
-            (np.array(list(self.group_count.values()))
-            / np.sum(list(self.group_count.values()))) if np.sum(list(self.group_count.values())) > 0 else 0
+            (
+                np.array(list(self.group_count.values()))
+                / np.sum(list(self.group_count.values()))
+            )
+            if np.sum(list(self.group_count.values())) > 0
+            else 0
         )
 
         _wfair = [wfair[value - 1] for value in self.item_group.values()]
