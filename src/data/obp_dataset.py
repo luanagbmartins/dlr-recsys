@@ -193,7 +193,7 @@ class MovieLensDataset(BaseRealBanditDataset):
         # Train Dataset
         print("----- Preprocessing dataset")
 
-        _df = self.data[self.data["rating"] >= 4]
+        _df = self.data[self.data["rating"] >= 4].copy()
         df_list = []
         for g, df_g in _df.groupby("user_id"):
             list_of_indexes = []
@@ -204,9 +204,8 @@ class MovieLensDataset(BaseRealBanditDataset):
             df_g["item_id_history"] = list_of_indexes
             df_g["item_id_history"] = df_g["item_id_history"].shift(1)
 
-            Item_prev = (
-                df_g["item_id_history"].apply(lambda x: [] if x is np.nan else x)
-                # .apply(lambda x: ([0] * (5 - len(x)) + x)[:5])
+            Item_prev = df_g["item_id_history"].apply(
+                lambda x: [] if x is np.nan else x
             )
             df_list.append(Item_prev)
 
@@ -216,6 +215,10 @@ class MovieLensDataset(BaseRealBanditDataset):
         self.data["item_id_history"] = self.data.groupby(["user_id"])[
             "item_id_history"
         ].apply(lambda x: x.bfill().ffill())
+
+        self.data["item_id_history"] = self.data["item_id_history"].apply(
+            lambda x: x if type(x) is list else []
+        )
 
         self.data["item_id_history"] = self.data["item_id_history"].apply(
             lambda x: np.array(x)
