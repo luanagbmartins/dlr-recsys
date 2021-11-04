@@ -205,7 +205,7 @@ class LinUCB(BaseLinPolicy):
 
         super().__post_init__()
 
-    def select_action(self, context: np.ndarray) -> np.ndarray:
+    def select_action(self, context: np.ndarray, available_items=None) -> np.ndarray:
         """Select action for new data.
         Parameters
         ----------
@@ -235,7 +235,10 @@ class LinUCB(BaseLinPolicy):
             axis=1,
         )  # 1 * n_actions
         ucb_scores = (context @ self.theta_hat + self.epsilon * sigma_hat).flatten()
-        actions = ucb_scores.argsort()[::-1][: self.len_list]
+        ucb_scores = ucb_scores.argsort()
+        if available_items:
+            ucb_scores = ucb_scores[available_items]
+        actions = ucb_scores[::-1][: self.len_list]
         self.update_fairness_status(actions)
 
         return actions
@@ -292,12 +295,13 @@ class WFairLinUCB(LinUCB):
     def __post_init__(self) -> None:
         """Initialize class."""
         check_scalar(self.epsilon, "epsilon", float, min_val=0.0)
-        self.policy_name = f"wfair_linear_ucb_{self.epsilon}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
         self.group_count: dict = {}
 
         super().__post_init__()
 
-    def select_action(self, context: np.ndarray) -> np.ndarray:
+        self.policy_name = f"wfair_linear_ucb_{self.epsilon}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+
+    def select_action(self, context: np.ndarray, available_items=None) -> np.ndarray:
         """Select action for new data.
         Parameters
         ----------
@@ -343,7 +347,10 @@ class WFairLinUCB(LinUCB):
         _wfair = [wfair[value - 1] for value in self.item_group.values()]
         ucb_scores = ucb_scores + (np.array(_wfair) * np.absolute(ucb_scores))
 
-        actions = ucb_scores.argsort()[::-1][: self.len_list]
+        ucb_scores = ucb_scores.argsort()
+        if available_items:
+            ucb_scores = ucb_scores[available_items]
+        actions = ucb_scores[::-1][: self.len_list]
         self.update_fairness_status(actions)
 
         return actions
@@ -383,11 +390,12 @@ class FairLinUCB(LinUCB):
     def __post_init__(self) -> None:
         """Initialize class."""
         check_scalar(self.epsilon, "epsilon", float, min_val=0.0)
-        self.policy_name = f"fair_linear_ucb_{self.epsilon}_{self.alpha}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
         self.group_count: dict = {}
         self.arm_count: dict = {}
 
         super().__post_init__()
+
+        self.policy_name = f"fair_linear_ucb_{self.epsilon}_{self.alpha}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
 
     def calculate_score_fairness(self) -> np.array:
         fair = np.array(list(self.fairness_weight.value())) * (

@@ -37,6 +37,7 @@ class MovieLensDataset(BaseRealBanditDataset):
         users_num: int,
         items_num: int,
         state_size: int,
+        filter_ids: list = None,
     ):
         """Dataset container"""
 
@@ -51,7 +52,7 @@ class MovieLensDataset(BaseRealBanditDataset):
 
         self.data_path = os.path.join(data_path, "ml-100k")
         # self.download_data("ml-100k", data_path)
-        self.load_raw_data()
+        self.load_raw_data(filter_ids)
         self.pre_process()
 
     @property
@@ -105,7 +106,7 @@ class MovieLensDataset(BaseRealBanditDataset):
                 with zipfile.ZipFile(output_file, "r") as zip_ref:
                     zip_ref.extractall(output_path)
 
-    def load_raw_data(self) -> None:
+    def load_raw_data(self, filter_ids=None) -> None:
         """Load raw open bandit dataset."""
 
         ratings_df = pd.read_csv(
@@ -170,6 +171,9 @@ class MovieLensDataset(BaseRealBanditDataset):
         users_df["user_id"] = users_encoder.transform(users_df["user_id"].values)
         ratings_df["user_id"] = users_encoder.transform(ratings_df["user_id"].values)
 
+        if filter_ids:
+            ratings_df = ratings_df[ratings_df["user_id"].isin(filter_ids)]
+
         ratings_df = ratings_df.applymap(int)
         ratings_df = ratings_df.sort_values("timestamp")
 
@@ -208,10 +212,19 @@ class MovieLensDataset(BaseRealBanditDataset):
 
         _df["item_id_history"] = pd.concat(df_list)
         self.data["item_id_history"] = _df["item_id_history"]
-        self.data = self.data.fillna(method="ffill")
+        print(self.data)
+        self.data.to_csv("./before.csv", index=False)
+
+        self.data["item_id_history"] = self.data.groupby(["user_id"])[
+            "item_id_history"
+        ].apply(lambda x: x.bfill())
+
         self.data["item_id_history"] = self.data["item_id_history"].apply(
             lambda x: np.array(x)
         )
+
+        print(self.data)
+        self.data.to_csv("./after.csv", index=False)
         self.data["len_history"] = self.data["item_id_history"].apply(
             lambda x: x.shape[0]
         )
@@ -233,6 +246,8 @@ class MovieLensDataset(BaseRealBanditDataset):
             ),
             axis=1,
         )
+        # self.context = self.user_embeddings[self.data["user_id"].values].cpu().numpy()
+
         self.action_context = (
             self.item_embeddings[self.item_context["movie_id"].values].cpu().numpy()
         )
@@ -241,7 +256,7 @@ class MovieLensDataset(BaseRealBanditDataset):
         self.reward = 0.5 * (self.data["rating"].values - 3)
         # (
         #     self.data["rating"].apply(lambda x: 0 if x < 4 else 1).values
-        # )  # 0.5 * (self.data["rating"].values - 3)
+        # )
         self.pscore = np.ones_like(self.action, dtype=int) * (
             1 / (self.item_context["movie_id"].max() + 1)
         )
