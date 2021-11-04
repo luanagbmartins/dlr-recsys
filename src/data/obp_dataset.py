@@ -212,19 +212,15 @@ class MovieLensDataset(BaseRealBanditDataset):
 
         _df["item_id_history"] = pd.concat(df_list)
         self.data["item_id_history"] = _df["item_id_history"]
-        print(self.data)
-        self.data.to_csv("./before.csv", index=False)
 
         self.data["item_id_history"] = self.data.groupby(["user_id"])[
             "item_id_history"
-        ].apply(lambda x: x.bfill())
+        ].apply(lambda x: x.bfill().ffill())
 
         self.data["item_id_history"] = self.data["item_id_history"].apply(
             lambda x: np.array(x)
         )
 
-        print(self.data)
-        self.data.to_csv("./after.csv", index=False)
         self.data["len_history"] = self.data["item_id_history"].apply(
             lambda x: x.shape[0]
         )
