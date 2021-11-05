@@ -114,8 +114,9 @@ class FairRecAgent:
         else:
             raise "Embedding Model Type not supported"
 
-        self.env.reward_model = self.reward_model
-        self.env.device = self.device
+        if self.env:
+            self.env.reward_model = self.reward_model
+            self.env.device = self.device
 
         self.srm_ave = FairRecStateRepresentation(self.embedding_dim, self.n_groups).to(
             self.device
@@ -617,11 +618,12 @@ class FairRecAgent:
     def save_model(self, actor_path, critic_path, buffer_path=None):
         self.actor.save_weights(actor_path)
         self.critic.save_weights(critic_path)
+
         if buffer_path:
             import pickle
 
             with open(buffer_path, "wb") as f:
-                pickle.dump(f)
+                pickle.dump(self.buffer, f)
 
     def load_model(self, actor_path, critic_path):
         self.actor.load_weights(actor_path)

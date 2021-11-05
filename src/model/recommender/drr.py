@@ -54,7 +54,6 @@ class DRRAgent:
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() and not no_cuda else "cpu"
         )
-        print("DEVICE ", self.device)
 
         self.env = env
 
@@ -119,8 +118,9 @@ class DRRAgent:
         else:
             raise "Embedding Model Type not supported"
 
-        self.env.reward_model = self.reward_model
-        self.env.device = self.device
+        if self.env:
+            self.env.reward_model = self.reward_model
+            self.env.device = self.device
 
         self.srm_ave = DRRAveStateRepresentation(self.embedding_dim).to(self.device)
 
@@ -476,7 +476,6 @@ class DRRAgent:
     def evaluate(self, env, top_k=0, available_items=None):
         # episodic reward
         episode_reward = 0
-        correct_count = 0
         steps = 0
 
         mean_precision = 0
@@ -514,6 +513,7 @@ class DRRAgent:
             # Calculate reward and observe new state (in env)
             ## Step
             next_items_ids, reward, done, _ = env.step(recommended_item, top_k=top_k)
+
             if top_k:
                 correct_list = [1 if r > 0 else 0 for r in reward]
                 # ndcg
@@ -566,7 +566,7 @@ class DRRAgent:
             import pickle
 
             with open(buffer_path, "wb") as f:
-                pickle.dump(f)
+                pickle.dump(self.buffer, f)
 
     def load_model(self, actor_path, critic_path):
         self.actor.load_weights(actor_path)

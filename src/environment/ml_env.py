@@ -36,7 +36,9 @@ class OfflineEnv(object):
             fix_user_id if fix_user_id else np.random.choice(self.available_users)
         )
         self.user_items = {data[0]: data[1] for data in self.users_dict[self.user]}
-        self.items = [data[0] for data in self.users_dict[self.user][: self.state_size]]
+        self.items = [data[0] for data in self.users_dict[self.user] if data[1] >= 4][
+            : self.state_size
+        ]
         self.done = False
         self.recommended_items = set(self.items)
         self.done_count = done_count
@@ -57,10 +59,7 @@ class OfflineEnv(object):
         return available_users
 
     def get_reward(self, action):
-        if self.reward_model:
-            return 0.5 * (self.user_items[action] - 3)
-        else:
-            return 1.0 if self.user_items[action] >= 4 else -1.0
+        return 0.5 * (self.user_items[action] - 3)
 
     def reset(self, reset_fairness_status=True):
         self.user = (
@@ -69,14 +68,12 @@ class OfflineEnv(object):
             else np.random.choice(self.available_users)
         )
         self.user_items = {data[0]: data[1] for data in self.users_dict[self.user]}
-        self.items = [data[0] for data in self.users_dict[self.user][: self.state_size]]
+        self.items = [data[0] for data in self.users_dict[self.user] if data[1] >= 4][
+            : self.state_size
+        ]
         self.done = False
         self.recommended_items = set(self.items)
-        self.group_count = (
-            {k: 0 for k in range(1, self.n_groups + 1)}
-            if reset_fairness_status
-            else self.group_count
-        )
+        self.group_count = {k: 0 for k in range(1, self.n_groups + 1)}
         self.total_recommended_items = 0
         return self.user, self.items, self.done
 
@@ -90,6 +87,7 @@ class OfflineEnv(object):
                 self.group_count[self.movies_groups[act]] += 1
                 self.total_recommended_items += 1
 
+                # If we know the reward according to the feedback log
                 if act in self.user_items.keys() and act not in self.recommended_items:
                     _reward = self.get_reward(act)
                     rewards.append(_reward)
@@ -97,6 +95,7 @@ class OfflineEnv(object):
                     if _reward > 0:
                         correctly_recommended.append(act)
 
+                # If we dont know the reward, use reward predictor
                 elif (
                     act not in self.user_items.keys()
                     and act not in self.recommended_items
@@ -117,6 +116,7 @@ class OfflineEnv(object):
                     else:
                         rewards.append(0)
 
+                # Penalize the agent if they have already recommended this item
                 else:
                     rewards.append(-1)
 
@@ -144,7 +144,6 @@ class OfflineEnv(object):
                 and action not in self.recommended_items
             ):
                 if self.reward_model:
-                    # TODO model.predict
                     reward = (
                         self.reward_model.predict(
                             torch.tensor([self.user]).long().to(self.device),
@@ -156,6 +155,7 @@ class OfflineEnv(object):
                     )
                 else:
                     reward = 0
+
             else:
                 reward = -1
 
@@ -163,7 +163,6 @@ class OfflineEnv(object):
                 self.items = self.items[1:] + [action]
 
             self.recommended_items.add(action)
-
 
         if (
             self.total_recommended_items > self.done_count
@@ -205,7 +204,9 @@ class OfflineFairEnv(OfflineEnv):
     def step(self, action, top_k=False):
 
         reward = -1
+
         if top_k:
+
             correctly_recommended = []
             rewards = []
             for act in action:
@@ -237,7 +238,6 @@ class OfflineFairEnv(OfflineEnv):
                     and act not in self.recommended_items
                 ):
                     if self.reward_model:
-                        # TODO model.predict
                         _reward = (
                             self.reward_model.predict(
                                 torch.tensor([self.user]).long().to(self.device),
@@ -260,10 +260,13 @@ class OfflineFairEnv(OfflineEnv):
                                 )
                                 + 1
                             )
+
                         else:
                             rewards.append(-1)
+
                     else:
                         rewards.append(0)
+
                 else:
                     rewards.append(-1)
 
@@ -286,6 +289,7 @@ class OfflineFairEnv(OfflineEnv):
                 and action not in self.recommended_items
             ):
                 _reward = self.get_reward(action)
+
                 if _reward > 0:
                     self.items = self.items[1:] + [action]
                     reward = (
@@ -299,6 +303,7 @@ class OfflineFairEnv(OfflineEnv):
                         )
                         + 1
                     )
+
                 else:
                     reward = -1
 
@@ -307,7 +312,6 @@ class OfflineFairEnv(OfflineEnv):
                 and action not in self.recommended_items
             ):
                 if self.reward_model:
-                    # TODO model.predict
                     _reward = (
                         self.reward_model.predict(
                             torch.tensor([self.user]).long().to(self.device),
@@ -317,6 +321,7 @@ class OfflineFairEnv(OfflineEnv):
                         .cpu()
                         .numpy()[0]
                     )
+
                     if _reward > 0:
                         self.items = self.items[1:] + [action]
                         reward = (
@@ -330,6 +335,7 @@ class OfflineFairEnv(OfflineEnv):
                             )
                             + 1
                         )
+
                     else:
                         reward = -1
                 else:
