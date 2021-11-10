@@ -1,20 +1,9 @@
 import os
-import time
-import datetime
-import yaml
 import json
 import pickle
 import luigi
 import wandb
-import itertools
-import numpy as np
-import pandas as pd
 
-# import tensorflow as tf
-import matplotlib.pyplot as plt
-
-
-from src.data.dataset import DatasetGeneration
 from src.environment.ml_env import OfflineEnv, OfflineFairEnv
 from src.model.recommender import DRRAgent, FairRecAgent
 
@@ -71,9 +60,6 @@ class MovieLens(luigi.Task):
         dataset = self.load_data()
         self.train_model(dataset)
 
-        if self.evaluate:
-            self.evaluate_model(dataset)
-
     def load_data(self):
         with open(self.dataset_path) as json_file:
             _dataset_path = json.load(json_file)
@@ -82,26 +68,17 @@ class MovieLens(luigi.Task):
         with open(_dataset_path["train_users_dict"], "rb") as pkl_file:
             dataset["train_users_dict"] = pickle.load(pkl_file)
 
-        with open(_dataset_path["train_users_dict_positive_items"], "rb") as pkl_file:
-            dataset["train_users_dict_positive_items"] = pickle.load(pkl_file)
-
         with open(_dataset_path["train_users_history_lens"], "rb") as pkl_file:
             dataset["train_users_history_lens"] = pickle.load(pkl_file)
 
         with open(_dataset_path["eval_users_dict"], "rb") as pkl_file:
             dataset["eval_users_dict"] = pickle.load(pkl_file)
 
-        with open(_dataset_path["eval_users_dict_positive_items"], "rb") as pkl_file:
-            dataset["eval_users_dict_positive_items"] = pickle.load(pkl_file)
-
         with open(_dataset_path["eval_users_history_lens"], "rb") as pkl_file:
             dataset["eval_users_history_lens"] = pickle.load(pkl_file)
 
         with open(_dataset_path["users_history_lens"], "rb") as pkl_file:
             dataset["users_history_lens"] = pickle.load(pkl_file)
-
-        # with open(_dataset_path["movies_genres_id"], "rb") as pkl_file:
-        #     dataset["movies_genres_id"] = pickle.load(pkl_file)
 
         with open(_dataset_path["movies_groups"], "rb") as pkl_file:
             dataset["movies_groups"] = pickle.load(pkl_file)
@@ -127,8 +104,6 @@ class MovieLens(luigi.Task):
             env=env,
             users_num=self.users_num,
             items_num=self.items_num,
-            genres_num=self.genres_num,
-            movies_genres_id={},
             srm_size=self.srm_size,
             state_size=self.state_size,
             train_version=self.train_version,
@@ -163,126 +138,3 @@ class MovieLens(luigi.Task):
             os.path.join(self.output_path, "buffer.pkl"),
         )
         print("---------- Finish Saving Model")
-
-    def evaluate_model(self, dataset):
-        actor_checkpoints = sorted(
-            [
-                int((f.split("_")[1]).split(".")[0])
-                for f in os.listdir(self.output_path)
-                if f.startswith("actor_")
-            ]
-        )
-        critic_checkpoints = sorted(
-            [
-                int((f.split("_")[1]).split(".")[0])
-                for f in os.listdir(self.output_path)
-                if f.startswith("critic_")
-            ]
-        )
-
-        for actor_checkpoint, critic_checkpoint in zip(
-            actor_checkpoints, critic_checkpoints
-        ):
-            sum_precision = 0
-            sum_ndcg = 0
-            sum_propfair = 0
-            sum_cvr = 0
-            sum_ufg = 0
-
-            print("------------ ", self.algorithm)
-            env = ENV[self.algorithm](
-                users_dict=dataset["eval_users_dict"],
-                users_history_lens=dataset["eval_users_history_lens"],
-                n_groups=self.n_groups,
-                movies_groups=dataset["movies_groups"],
-                state_size=self.state_size,
-                done_count=self.done_count,
-                fairness_constraints=self.fairness_constraints,
-            )
-            available_users = env.available_users
-
-            recommender = AGENT[self.algorithm](
-                env=env,
-                users_num=self.users_num,
-                items_num=self.items_num,
-                genres_num=self.genres_num,
-                movies_genres_id={},  # dataset["movies_genres_id"],
-                srm_size=self.srm_size,
-                state_size=self.state_size,
-                train_version=self.train_version,
-                is_test=True,
-                use_wandb=self.use_wandb,
-                embedding_dim=self.embedding_dim,
-                actor_hidden_dim=self.actor_hidden_dim,
-                actor_learning_rate=self.actor_learning_rate,
-                critic_hidden_dim=self.critic_hidden_dim,
-                critic_learning_rate=self.critic_learning_rate,
-                discount_factor=self.discount_factor,
-                tau=self.tau,
-                replay_memory_size=self.replay_memory_size,
-                batch_size=self.batch_size,
-                model_path=self.output_path,
-                emb_model=self.emb_model,
-                embedding_network_weights_path=self.embedding_network_weights,
-                n_groups=self.n_groups,
-                fairness_constraints=self.fairness_constraints,
-            )
-
-            recommender.load_model(
-                os.path.join(self.output_path, "actor_{}.h5".format(actor_checkpoint)),
-                os.path.join(
-                    self.output_path, "critic_{}.h5".format(critic_checkpoint)
-                ),
-            )
-            for user_id in available_users:
-                eval_env = ENV[self.algorithm](
-                    users_dict=dataset["eval_users_dict"],
-                    users_history_lens=dataset["eval_users_history_lens"],
-                    n_groups=10,
-                    movies_groups=dataset["movies_groups"],
-                    state_size=self.state_size,
-                    done_count=self.done_count,
-                    fairness_constraints=self.fairness_constraints,
-                    fix_user_id=user_id,
-                )
-
-                recommender.env = eval_env
-
-                precision, ndcg, propfair = recommender.evaluate(
-                    eval_env, top_k=self.top_k
-                )
-                sum_precision += precision
-                sum_ndcg += ndcg
-                sum_propfair += propfair
-
-                del eval_env
-
-            print("---------- Evaluation")
-            print("- precision@: ", sum_precision / len(dataset["eval_users_dict"]))
-            print("- ndcg@: ", sum_ndcg / len(dataset["eval_users_dict"]))
-            print("- propfair: ", sum_propfair / len(dataset["eval_users_dict"]))
-            print(
-                "- ufg: ",
-                sum_propfair
-                / max(1 - (sum_precision / len(dataset["eval_users_dict"])), 0.01),
-            )
-            print()
-
-            if self.use_wandb:
-                wandb.log(
-                    {
-                        "cp_evaluation_precision@{}".format(self.top_k): sum_precision
-                        / len(dataset["eval_users_dict"]),
-                        "cp_evaluation_ndcg@{}".format(self.top_k): sum_ndcg
-                        / len(dataset["eval_users_dict"]),
-                        "cp_evaluation_propfair": sum_propfair
-                        / len(dataset["eval_users_dict"]),
-                        "cp_evaluation_cvr": sum_cvr / len(dataset["eval_users_dict"]),
-                        "cp_evaluation_ufg": sum_propfair
-                        / max(
-                            1 - (sum_precision / len(dataset["eval_users_dict"])), 0.01
-                        ),
-                    }
-                )
-
-            del recommender

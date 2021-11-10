@@ -6,31 +6,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class DRRAveStateRepresentation(nn.Module):
-    def __init__(self, embedding_dim):
-        super(DRRAveStateRepresentation, self).__init__()
-        self.embedding_dim = embedding_dim
-        self.drr_ave = torch.nn.Conv1d(in_channels=5, out_channels=1, kernel_size=1)
-
-        self.initialize()
-
-    def initialize(self):
-        nn.init.uniform_(self.drr_ave.weight)
-        self.drr_ave.bias.data.zero_()
-
-    def forward(self, x):
-        drr_ave = self.drr_ave(x[1]).squeeze(1)
-        output = torch.cat(
-            (
-                x[0],
-                x[0] * drr_ave,
-                drr_ave,
-            ),
-            1,
-        )
-        return output
-
-
 class Attention(nn.Module):
     def __init__(self, feature_dim, step_dim, bias=True, **kwargs):
         super(Attention, self).__init__(**kwargs)
@@ -70,6 +45,31 @@ class Attention(nn.Module):
 
         weighted_input = x * torch.unsqueeze(a, -1)
         return torch.sum(weighted_input, 1)
+
+
+class DRRAveStateRepresentation(nn.Module):
+    def __init__(self, embedding_dim):
+        super(DRRAveStateRepresentation, self).__init__()
+        self.embedding_dim = embedding_dim
+        self.drr_ave = torch.nn.Conv1d(in_channels=5, out_channels=1, kernel_size=1)
+
+        self.initialize()
+
+    def initialize(self):
+        nn.init.uniform_(self.drr_ave.weight)
+        self.drr_ave.bias.data.zero_()
+
+    def forward(self, x):
+        drr_ave = self.drr_ave(x[1]).squeeze(1)
+        output = torch.cat(
+            (
+                x[0],
+                x[0] * drr_ave,
+                drr_ave,
+            ),
+            1,
+        )
+        return output
 
 
 class FairRecStateRepresentation(nn.Module):

@@ -57,7 +57,7 @@ def run_bandit_simulation(
     propfair = []
     ufg = []
 
-    for epoch in range(epochs):
+    for _ in range(epochs):
         selected_actions_list = list()
         policy_.clear_group_count()
 
@@ -98,12 +98,15 @@ def run_bandit_simulation(
 
             selected_actions_list.append(selected_actions)
 
-        propfair.append(policy_.propfair)
-        cvr.append(cumulative_rewards / bandit_feedback["n_rounds"])
-        ufg.append(
-            policy_.propfair
-            / max(1 - (cumulative_rewards / bandit_feedback["n_rounds"]), 0.01)
+        _propfair = policy_.propfair()
+        _cvr = cumulative_rewards / bandit_feedback["n_rounds"]
+        _ufg = policy_.propfair / max(
+            1 - (cumulative_rewards / bandit_feedback["n_rounds"]), 0.01
         )
+
+        propfair.append(_propfair)
+        cvr.append(_cvr)
+        ufg.append(_ufg)
         group_count.append(policy_.group_count)
 
     with open("model/{}.pkl".format(policy_.policy_name), "wb") as file:
