@@ -4,6 +4,7 @@ import pickle
 import pandas as pd
 import numpy as np
 import random
+from sklearn import preprocessing
 
 from ..utils import DownloadDataset
 import gc
@@ -23,6 +24,8 @@ class ML25MLoadAndPrepareDataset(luigi.Task):
 
     def output(self):
         return {
+            "movies_df": luigi.LocalTarget(os.path.join(self.data_dir, "movies.csv")),
+            "ratings_df": luigi.LocalTarget(os.path.join(self.data_dir, "ratings.csv")),
             "train_users_dict": luigi.LocalTarget(
                 os.path.join(self.data_dir, "train_users_dict.pkl")
             ),
@@ -38,9 +41,6 @@ class ML25MLoadAndPrepareDataset(luigi.Task):
             "users_history_lens": luigi.LocalTarget(
                 os.path.join(self.data_dir, "users_history_lens.pkl")
             ),
-            "movies_id_to_movies": luigi.LocalTarget(
-                os.path.join(self.data_dir, "movies_id_to_movies.pkl")
-            ),
             "movies_groups": luigi.LocalTarget(
                 os.path.join(self.data_dir, "movies_groups.pkl")
             ),
@@ -49,6 +49,7 @@ class ML25MLoadAndPrepareDataset(luigi.Task):
     def run(self):
         print("---------- Load Dataset")
         datasets = self.load_dataset()
+
         print("---------- Prepare Dataset")
         self.prepareDataset(datasets)
 
@@ -62,6 +63,16 @@ class ML25MLoadAndPrepareDataset(luigi.Task):
         )
         movies_df = movies_df.rename(columns={"movieId": "movie_id"})
 
+        # Encode target labels with value between 0 and n_classes-1
+        movies_encoder = preprocessing.LabelEncoder()
+        movies_encoder.fit(movies_df["movie_id"].values)
+        movies_df["movie_id"] = movies_encoder.transform(movies_df["movie_id"].values)
+        ratings_df["movie_id"] = movies_encoder.transform(ratings_df["movie_id"].values)
+
+        users_encoder = preprocessing.LabelEncoder()
+        users_encoder.fit(ratings_df["user_id"].values)
+        ratings_df["user_id"] = users_encoder.transform(ratings_df["user_id"].values)
+
         datasets = {"ratings": ratings_df, "movies": movies_df}
         for dataset in datasets:
             datasets[dataset].to_csv(
@@ -73,25 +84,18 @@ class ML25MLoadAndPrepareDataset(luigi.Task):
 
     def prepareDataset(self, datasets):
 
-        movies_id_to_movies = {
-            row[0]: row[1:] for index, row in datasets["movies"].iterrows()
-        }
-        movies_groups = {
-            row[0]: random.randint(1, self.n_groups)
-            for index, row in datasets["movies"].iterrows()
-        }
+        # movies_groups = {
+        #     row[0]: random.randint(1, self.n_groups)
+        #     for index, row in datasets["movies"].iterrows()
+        # }
+        # with open(self.output()["movies_groups"].path, "wb") as file:
+        #     pickle.dump(movies_groups, file)
 
-        with open(self.output()["movies_id_to_movies"].path, "wb") as file:
-            pickle.dump(movies_id_to_movies, file)
-
-        with open(self.output()["movies_groups"].path, "wb") as file:
-            pickle.dump(movies_groups, file)
-
-        del movies_id_to_movies
-        del movies_groups
+        # del movies_groups
 
         print("---------- Ckpt 1")
 
+        datasets["ratings"] = datasets["ratings"].sort_values("timestamp")
         datasets["ratings"] = datasets["ratings"].applymap(int)
 
         users_dict = {user: [] for user in set(datasets["ratings"]["user_id"])}
@@ -120,13 +124,10 @@ class ML25MLoadAndPrepareDataset(luigi.Task):
         users_num = max(datasets["ratings"]["user_id"]) + 1
         items_num = max(datasets["ratings"]["movie_id"]) + 1
 
-        # 6041 3953
         print(users_num, items_num)
 
         # Training setting
         train_users_num = int(users_num * 0.8)
-        train_items_num = items_num
-
         train_users_dict = {k: users_dict.get(k) for k in range(1, train_users_num + 1)}
         with open(self.output()["train_users_dict"].path, "wb") as file:
             pickle.dump(train_users_dict, file)
@@ -135,7 +136,6 @@ class ML25MLoadAndPrepareDataset(luigi.Task):
         gc.collect()
 
         train_users_history_lens = users_history_lens[:train_users_num]
-
         with open(self.output()["train_users_history_lens"].path, "wb") as file:
             pickle.dump(train_users_history_lens, file)
 
@@ -146,7 +146,6 @@ class ML25MLoadAndPrepareDataset(luigi.Task):
 
         # Evaluating setting
         eval_users_num = int(users_num * 0.2)
-        eval_items_num = items_num
         eval_users_dict = {
             k: users_dict[k] for k in range(users_num - eval_users_num, users_num)
         }

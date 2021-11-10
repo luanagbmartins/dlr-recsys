@@ -30,17 +30,11 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
             "train_users_dict": luigi.LocalTarget(
                 os.path.join(self.data_dir, "train_users_dict.pkl")
             ),
-            "train_users_dict_positive_items": luigi.LocalTarget(
-                os.path.join(self.data_dir, "train_users_dict_positive_items.pkl")
-            ),
             "train_users_history_lens": luigi.LocalTarget(
                 os.path.join(self.data_dir, "train_users_history_lens.pkl")
             ),
             "eval_users_dict": luigi.LocalTarget(
                 os.path.join(self.data_dir, "eval_users_dict.pkl")
-            ),
-            "eval_users_dict_positive_items": luigi.LocalTarget(
-                os.path.join(self.data_dir, "eval_users_dict_positive_items.pkl")
             ),
             "eval_users_history_lens": luigi.LocalTarget(
                 os.path.join(self.data_dir, "eval_users_history_lens.pkl")
@@ -48,20 +42,19 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
             "users_history_lens": luigi.LocalTarget(
                 os.path.join(self.data_dir, "users_history_lens.pkl")
             ),
-            # "movies_genres_id": luigi.LocalTarget(
-            #     os.path.join(self.data_dir, "movies_genres_id.pkl")
-            # ),
             "movies_groups": luigi.LocalTarget(
                 os.path.join(self.data_dir, "movies_groups.pkl")
             ),
         }
 
     def run(self):
+        print("---------- Load Dataset")
         datasets = self.load_dataset()
+
+        print("---------- Prepare Dataset")
         self.prepareDataset(datasets)
 
     def load_dataset(self):
-
         ratings_df = pd.read_csv(
             os.path.join(self.data_dir, "u.data"),
             "\t",
@@ -112,18 +105,18 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
         )
         movies_df["movie_id"] = movies_df["movie_id"].apply(pd.to_numeric)
 
+        # Encode target labels with value between 0 and n_classes-1
         movies_encoder = preprocessing.LabelEncoder()
         movies_encoder.fit(movies_df["movie_id"].values)
-
         movies_df["movie_id"] = movies_encoder.transform(movies_df["movie_id"].values)
         ratings_df["movie_id"] = movies_encoder.transform(ratings_df["movie_id"].values)
 
         users_encoder = preprocessing.LabelEncoder()
         users_encoder.fit(users_df["user_id"].values)
-
         users_df["user_id"] = users_encoder.transform(users_df["user_id"].values)
         ratings_df["user_id"] = users_encoder.transform(ratings_df["user_id"].values)
 
+        # Save preprocessed dataframes
         datasets = {"ratings": ratings_df, "movies": movies_df, "users": users_df}
         for dataset in datasets:
             datasets[dataset].to_csv(
@@ -134,12 +127,15 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
         return datasets
 
     def prepareDataset(self, datasets):
-        movies_groups = {
-            row[0]: random.randint(1, self.n_groups)
-            for index, row in datasets["movies"].iterrows()
-        }
-        datasets["ratings"] = datasets["ratings"].applymap(int)
+
+        # # Generate movies groups
+        # movies_groups = {
+        #     row[0]: random.randint(1, self.n_groups)
+        #     for _, row in datasets["movies"].iterrows()
+        # }
+
         datasets["ratings"] = datasets["ratings"].sort_values("timestamp")
+        datasets["ratings"] = datasets["ratings"].applymap(int)
 
         users_dict = {user: [] for user in set(datasets["ratings"]["user_id"])}
 
@@ -163,35 +159,23 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
         users_num = max(datasets["ratings"]["user_id"]) + 1
         items_num = max(datasets["ratings"]["movie_id"]) + 1
 
-        # 6041 3953
         print(users_num, items_num)
 
         # Training setting
         train_users_num = int(users_num * 0.8)
-        train_items_num = items_num
         train_users_dict = {k: users_dict.get(k) for k in range(0, train_users_num - 1)}
-        train_users_dict_positive_items = {
-            k: users_dict_positive_items.get(k) for k in range(0, train_users_num - 1)
-        }
         train_users_history_lens = users_history_lens[:train_users_num]
 
         # Evaluating setting
         eval_users_num = int(users_num * 0.2)
-        eval_items_num = items_num
         eval_users_dict = {
             k: users_dict[k] for k in range(users_num - eval_users_num, users_num)
         }
-        eval_users_dict_positive_items = {
-            k: users_dict_positive_items.get(k)
-            for k in range(users_num - eval_users_num, users_num)
-        }
         eval_users_history_lens = users_history_lens[-eval_users_num:]
 
+        # Save processed data
         with open(self.output()["train_users_dict"].path, "wb") as file:
             pickle.dump(train_users_dict, file)
-
-        with open(self.output()["train_users_dict_positive_items"].path, "wb") as file:
-            pickle.dump(train_users_dict_positive_items, file)
 
         with open(self.output()["train_users_history_lens"].path, "wb") as file:
             pickle.dump(train_users_history_lens, file)
@@ -199,14 +183,11 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
         with open(self.output()["eval_users_dict"].path, "wb") as file:
             pickle.dump(eval_users_dict, file)
 
-        with open(self.output()["eval_users_dict_positive_items"].path, "wb") as file:
-            pickle.dump(eval_users_dict_positive_items, file)
-
         with open(self.output()["eval_users_history_lens"].path, "wb") as file:
             pickle.dump(eval_users_history_lens, file)
 
         with open(self.output()["users_history_lens"].path, "wb") as file:
             pickle.dump(users_history_lens, file)
 
-        with open(self.output()["movies_groups"].path, "wb") as file:
-            pickle.dump(movies_groups, file)
+        # with open(self.output()["movies_groups"].path, "wb") as file:
+        #     pickle.dump(movies_groups, file)

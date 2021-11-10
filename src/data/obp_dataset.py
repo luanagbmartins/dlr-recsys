@@ -1,11 +1,8 @@
 import os
-from dataclasses import dataclass
 from typing import Optional, Tuple, Union
-from logging import getLogger, basicConfig, INFO
 
 from tqdm import tqdm
 from pathlib import Path
-from ast import literal_eval
 import requests
 import zipfile
 import math
@@ -22,9 +19,7 @@ from obp.types import BanditFeedback
 from src.model.pmf import PMF
 
 DATASETS = {
-    "ml-1m": ["https://files.grouplens.org/datasets/movielens/ml-1m.zip"],
     "ml-100k": ["https://files.grouplens.org/datasets/movielens/ml-100k.zip"],
-    "ml-25m": ["https://files.grouplens.org/datasets/movielens/ml-25m.zip"],
 }
 
 
@@ -76,7 +71,6 @@ class MovieLensDataset(BaseRealBanditDataset):
         return 1
 
     def download_data(self, name, output_path, cache=True) -> None:
-        results = []
         for url in DATASETS[name]:
 
             output_file = os.path.join(output_path, name, os.path.basename(url))
@@ -161,13 +155,11 @@ class MovieLensDataset(BaseRealBanditDataset):
 
         movies_encoder = preprocessing.LabelEncoder()
         movies_encoder.fit(movies_df["movie_id"].values)
-
         movies_df["movie_id"] = movies_encoder.transform(movies_df["movie_id"].values)
         ratings_df["movie_id"] = movies_encoder.transform(ratings_df["movie_id"].values)
 
         users_encoder = preprocessing.LabelEncoder()
         users_encoder.fit(users_df["user_id"].values)
-
         users_df["user_id"] = users_encoder.transform(users_df["user_id"].values)
         ratings_df["user_id"] = users_encoder.transform(ratings_df["user_id"].values)
 
@@ -227,7 +219,7 @@ class MovieLensDataset(BaseRealBanditDataset):
         self.data["len_history"] = self.data["item_id_history"].apply(
             lambda x: x.shape[0]
         )
-        self.data = self.data.drop(self.data[self.data["len_history"] == 0].index)
+        self.data = self.data.drop(self.data[self.data["len_history"] < 5].index)
 
         item_ave = np.array(
             [
@@ -245,17 +237,15 @@ class MovieLensDataset(BaseRealBanditDataset):
             ),
             axis=1,
         )
-        # self.context = self.user_embeddings[self.data["user_id"].values].cpu().numpy()
 
         self.action_context = (
             self.item_embeddings[self.item_context["movie_id"].values].cpu().numpy()
         )
 
         self.action = self.data["movie_id"].values
-        self.reward = 0.5 * (self.data["rating"].values - 3)
-        # (
-        #     self.data["rating"].apply(lambda x: 0 if x < 4 else 1).values
-        # )
+        self.reward = (
+            self.data["rating"].apply(lambda x: 0 if x < 4 else 1).values
+        )  # 0.5 * (self.data["rating"].values - 3)
         self.pscore = np.ones_like(self.action, dtype=int) * (
             1 / (self.item_context["movie_id"].max() + 1)
         )

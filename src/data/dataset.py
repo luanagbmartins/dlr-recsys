@@ -2,7 +2,6 @@ import os
 import luigi
 import yaml
 import json
-import datetime as dt
 
 from src.data.datasets import (
     ML1MLoadAndPrepareDataset,
@@ -26,7 +25,7 @@ class DatasetGeneration(luigi.Task):
 
     def output(self):
         return luigi.LocalTarget(
-            os.path.join(OUTPUT_PATH, str(self.dataset_version + "_output_path.json"))
+            os.path.join("data", str(self.dataset_version + "_output_path.json"))
         )
 
     def run(self):
