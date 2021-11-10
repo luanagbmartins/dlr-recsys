@@ -18,7 +18,6 @@ class MovieLens(luigi.Task):
     epochs: int = luigi.IntParameter(default=5)
     users_num: int = luigi.IntParameter(default=6041)
     items_num: int = luigi.IntParameter(default=3953)
-    genres_num: int = luigi.IntParameter(default=0)
     state_size: int = luigi.IntParameter(default=10)
     srm_size: int = luigi.IntParameter(default=3)
     max_eps_num: int = luigi.IntParameter(default=8000)

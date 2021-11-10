@@ -1,18 +1,9 @@
 import os
-import time
 import datetime
 import yaml
 import luigi
-import itertools
-import numpy as np
-import pandas as pd
-
-# import tensorflow as tf
-import matplotlib.pyplot as plt
-
 
 from src.data.dataset import DatasetGeneration
-from src.environment.ml_env import OfflineEnv
 from src.train_model import MovieLens
 
 OUTPUT_PATH = os.path.join(os.getcwd(), "model")
@@ -20,8 +11,6 @@ OUTPUT_PATH = os.path.join(os.getcwd(), "model")
 TRAINER = dict(
     movie_lens_100k=MovieLens,
     movie_lens_100k_fair=MovieLens,
-    movie_lens_1m=MovieLens,
-    movie_lens_1m_fair=MovieLens,
 )
 
 
@@ -54,26 +43,11 @@ class DRLTrain(luigi.Task):
         print("---------- Generate Dataset")
         dataset = yield DatasetGeneration(self.dataset_version)
 
-        # print("---------- Train Embedding")
-        # emb = yield MLEmbedding(
-        #     **self.train_config["emb_train"],
-        #     users_num=self.train_config["users_num"],
-        #     items_num=self.train_config["items_num"],
-        #     genres_num=self.train_config["genres_num"],
-        #     embedding_dim=self.train_config["embedding_dim"],
-        #     emb_model=self.train_config["emb_model"],
-        #     output_path=self.output_path,
-        #     train_version=self.train_version,
-        #     dataset_path=dataset.path,
-        #     use_wandb=self.use_wandb,
-        # )
-
         print("---------- Train Model")
         train = yield TRAINER[self.train_version](
             **self.train_config["model_train"],
             users_num=self.train_config["users_num"],
             items_num=self.train_config["items_num"],
-            genres_num=self.train_config["genres_num"],
             embedding_dim=self.train_config["embedding_dim"],
             emb_model=self.train_config["emb_model"],
             output_path=self.output_path,

@@ -1,6 +1,5 @@
 users_num: 943
 items_num: 1682
-genres_num: 0
 embedding_dim: 50
 emb_model: "user_movie"
 model_train:
@@ -16,7 +15,7 @@ model_train:
     tau: 0.01
     learning_starts: 5000
     replay_memory_size: 1000000
-    batch_size: 128
+    batch_size: 64
     embedding_network_weights: model/pmf/emb_50_ratio_0.800000_bs_1000_e_258_wd_0.100000_lr_0.000100_trained_pmf.pt
     n_groups: 10
     done_count: 10

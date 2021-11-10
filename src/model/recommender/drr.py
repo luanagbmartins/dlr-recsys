@@ -120,9 +120,9 @@ class DRRAgent:
             self.env.reward_model = self.reward_model
             self.env.device = self.device
 
-        self.srm_ave = STATE_REPRESENTATION[train_version](self.embedding_dim).to(
-            self.device
-        )
+        self.srm_ave = STATE_REPRESENTATION[train_version](
+            self.embedding_dim, self.n_groups
+        ).to(self.device)
 
         self.buffer = PriorityExperienceReplay(
             self.replay_memory_size,

@@ -48,7 +48,7 @@ class Attention(nn.Module):
 
 
 class DRRAveStateRepresentation(nn.Module):
-    def __init__(self, embedding_dim):
+    def __init__(self, embedding_dim, n_groups=None):
         super(DRRAveStateRepresentation, self).__init__()
         self.embedding_dim = embedding_dim
         self.drr_ave = torch.nn.Conv1d(in_channels=5, out_channels=1, kernel_size=1)
