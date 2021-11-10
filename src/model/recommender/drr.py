@@ -1,7 +1,5 @@
 import os
-import math
 from tqdm import tqdm
-import json
 
 import torch
 import numpy as np
@@ -11,11 +9,18 @@ from src.model.actor import Actor
 from src.model.critic import Critic
 from src.model.ou_noise import OUNoise
 from src.model.replay_buffer import PriorityExperienceReplay
-from src.model.state_representation import DRRAveStateRepresentation
-
-import matplotlib.pyplot as plt
+from src.model.state_representation import (
+    DRRAveStateRepresentation,
+    FairRecStateRepresentation,
+)
 
 import wandb
+
+
+STATE_REPRESENTATION = dict(
+    movie_lens_100k=DRRAveStateRepresentation,
+    movie_lens_100k_fair=FairRecStateRepresentation,
+)
 
 
 class DRRAgent:
@@ -24,8 +29,6 @@ class DRRAgent:
         env,
         users_num,
         items_num,
-        genres_num,
-        movies_genres_id,
         state_size,
         srm_size,
         model_path,
@@ -43,8 +46,6 @@ class DRRAgent:
         tau=0.001,
         learning_starts=1000,
         replay_memory_size=1000000,
-        ou_noise_theta=0.0,
-        ou_noise_sigma=0.0,
         batch_size=32,
         n_groups=4,
         fairness_constraints=[0.25, 0.25, 0.25, 0.25],
@@ -59,7 +60,6 @@ class DRRAgent:
 
         self.users_num = users_num
         self.items_num = items_num
-        self.genres_num = genres_num
 
         self.model_path = model_path
 
@@ -81,8 +81,6 @@ class DRRAgent:
 
         self.n_groups = n_groups
         self.fairness_constraints = fairness_constraints
-
-        self.movies_genres_id = movies_genres_id
 
         self.actor = Actor(
             self.embedding_dim,
@@ -122,7 +120,9 @@ class DRRAgent:
             self.env.reward_model = self.reward_model
             self.env.device = self.device
 
-        self.srm_ave = DRRAveStateRepresentation(self.embedding_dim).to(self.device)
+        self.srm_ave = STATE_REPRESENTATION[train_version](self.embedding_dim).to(
+            self.device
+        )
 
         self.buffer = PriorityExperienceReplay(
             self.replay_memory_size,
@@ -134,11 +134,6 @@ class DRRAgent:
         # noise
         self.noise = OUNoise(self.embedding_dim, decay_period=10)
 
-        # self.epsilon = 1.0
-        # self.epsilon_decay = 0.99
-        # self.epsilon_min = 0.01
-        self.std = 1.5
-
         self.is_test = is_test
 
         # wandb
@@ -149,9 +144,8 @@ class DRRAgent:
                 config={
                     "users_num": users_num,
                     "items_num": items_num,
-                    "genres_num": genres_num,
-                    "emb_model": emb_model,
                     "state_size": state_size,
+                    "emb_model": emb_model,
                     "embedding_dim": self.embedding_dim,
                     "actor_hidden_dim": self.actor_hidden_dim,
                     "actor_learning_rate": self.actor_learning_rate,
@@ -159,9 +153,9 @@ class DRRAgent:
                     "critic_learning_rate": self.critic_learning_rate,
                     "discount_factor": self.discount_factor,
                     "tau": self.tau,
+                    "learning_starts": self.learning_starts,
                     "replay_memory_size": self.replay_memory_size,
                     "batch_size": self.batch_size,
-                    "std_for_exploration": self.std,
                     "group_fairness": n_groups,
                     "fairness_constraints": self.fairness_constraints,
                 },
@@ -195,6 +189,21 @@ class DRRAgent:
 
         return items_eb
 
+    def get_state(self, user_id, items_ids):
+        user_eb = self.user_embeddings[user_id]
+        items_eb = self.get_items_emb(items_ids)
+
+        with torch.no_grad():
+            ## SRM state
+            state = self.srm_ave(
+                [
+                    user_eb.unsqueeze(0),
+                    items_eb.unsqueeze(0),
+                ]
+            )
+
+        return state
+
     def train(self, max_episode_num, top_k=False, load_model=False):
         self.actor.update_target_network()
         self.critic.update_target_network()
@@ -225,8 +234,6 @@ class DRRAgent:
             )
             print("----- Completely load weights!")
 
-        episodic_precision_history = []
-
         sum_precision = 0
         sum_ndcg = 0
         sum_propfair = 0
@@ -236,7 +243,6 @@ class DRRAgent:
 
             # episodic reward
             episode_reward = 0
-            correct_count = 0
             steps = 0
             critic_loss = 0
             actor_loss = 0
@@ -249,31 +255,17 @@ class DRRAgent:
 
             while not done:
                 # observe current state & Find action
-                user_eb = self.user_embeddings[user_id]
-                items_eb = self.get_items_emb(items_ids)
+                state = self.get_state(user_id, items_ids)
 
                 with torch.no_grad():
-                    ## SRM state
-                    state = self.srm_ave(
-                        [
-                            user_eb.unsqueeze(0),
-                            items_eb.unsqueeze(0),
-                        ]
-                    )
-
                     ## action(ranking score)
                     action = self.actor.network(state)
 
                     ## epsilon-greedy exploration
-                    # if self.epsilon > np.random.uniform() and not self.is_test:
                     if not self.is_test:
                         action = self.noise.get_action(
                             action.detach().cpu().numpy()[0], steps
                         ).to(self.device)
-                        # self.epsilon = max(
-                        #     self.epsilon * self.epsilon_decay, self.epsilon_min
-                        # )
-                        # action += np.random.normal(0, self.std, size=action.shape)
 
                 ## item
                 recommended_item = self.recommend_item(
@@ -287,15 +279,7 @@ class DRRAgent:
                 )
 
                 # get next_state
-                next_items_eb = self.get_items_emb(next_items_ids)
-
-                with torch.no_grad():
-                    next_state = self.srm_ave(
-                        [
-                            user_eb.unsqueeze(0),
-                            next_items_eb.unsqueeze(0),
-                        ]
-                    )
+                next_state = self.get_state(user_id, next_items_ids)
 
                 # buffer
                 self.buffer.append(
@@ -307,7 +291,7 @@ class DRRAgent:
                 )
 
                 if self.buffer.crt_idx > self.learning_starts or self.buffer.is_full:
-                    _actor_loss, _critic_loss = self.update_model()
+                    _critic_loss, _actor_loss = self.update_model()
                     actor_loss += _actor_loss
                     critic_loss += _critic_loss
 
@@ -357,7 +341,6 @@ class DRRAgent:
                                 "precision": (mean_precision / steps) * 100,
                                 "ndcg": mean_ndcg / steps,
                                 "total_reward": episode_reward,
-                                # "epsilone": self.epsilon,
                                 "critic_loss": critic_loss / steps,
                                 "actor_loss": actor_loss / steps,
                                 "mean_action": mean_action / steps,
@@ -367,15 +350,6 @@ class DRRAgent:
                                 / max(1 - (mean_precision / steps), 0.01),
                             }
                         )
-                    episodic_precision_history.append((mean_precision / steps) * 100)
-
-            if (episode + 1) % 50 == 0:
-                plt.plot(episodic_precision_history)
-                plt.savefig(
-                    os.path.join(
-                        self.model_path, "images/training_precision_%_top_5.png"
-                    )
-                )
 
             if (episode + 1) % 1000 == 0:
                 self.save_model(
@@ -486,19 +460,9 @@ class DRRAgent:
 
         while not done:
             # Observe current state and Find action
-            ## Embedding
-            user_eb = self.user_embeddings[user_id]
-            items_eb = self.get_items_emb(items_ids)
+            state = self.get_state(user_id, items_ids)
 
             with torch.no_grad():
-                ## SRM state
-                state = self.srm_ave(
-                    [
-                        user_eb.unsqueeze(0),
-                        items_eb.unsqueeze(0),
-                    ]
-                )
-
                 ## Action(ranking score)
                 action = self.actor.network(state)
 
