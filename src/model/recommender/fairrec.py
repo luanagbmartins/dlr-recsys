@@ -1,6 +1,8 @@
 import torch
 import numpy as np
 
+from operator import itemgetter
+
 from src.model.recommender.drr import DRRAgent
 
 
@@ -31,6 +33,7 @@ class FairRecAgent(DRRAgent):
         n_groups=4,
         fairness_constraints=[0.25, 0.25, 0.25, 0.25],
         no_cuda=False,
+        use_reward_model=True,
     ):
 
         super().__init__(
@@ -58,34 +61,41 @@ class FairRecAgent(DRRAgent):
             n_groups=n_groups,
             fairness_constraints=fairness_constraints,
             no_cuda=no_cuda,
+            use_reward_model=use_reward_model,
         )
 
-    def get_state(self, user_id, items_ids):
-        items_eb = self.get_items_emb(items_ids)
-        groups_eb = []
-        for items in items_ids:
-            groups_id = [
-                k
-                for k, v in self.env.movies_groups.items()
-                if v == self.env.movies_groups[items]
-            ]
-            groups_eb.append(self.get_items_emb(groups_id))
+    def get_state(self, user_id, items_ids, group_counts):
 
-        total_exp = np.sum(list(self.env.group_count.values()))
-        fairness_allocation = (
-            (np.array(list(self.env.group_count.values())) / total_exp)
-            if total_exp > 0
-            else np.zeros(self.n_groups)
-        )
+        groups = []
+        fairness_allocation = []
+        for batch_item, batch_group in zip(items_ids, group_counts):
 
-        with torch.no_grad():
-            ## SRM state
-            state = self.srm_ave(
-                [
-                    items_eb.unsqueeze(0),
-                    groups_eb,
-                    torch.FloatTensor(fairness_allocation).unsqueeze(0).to(self.device),
-                ]
+            _groups = list(itemgetter(*batch_item)(self.env.movies_groups))
+            groups_id = list(itemgetter(*_groups)(self.env.groups_movies))
+            groups.append(
+                torch.stack(
+                    [torch.mean(self.get_items_emb(g), axis=0) for g in groups_id]
+                )
             )
 
+            total_exp = np.sum(batch_group)
+            _fairness_allocation = (
+                (np.array(batch_group) / total_exp)
+                if total_exp > 0
+                else np.zeros(self.n_groups)
+            )
+            fairness_allocation.append(_fairness_allocation)
+
+        ## SRM state
+        state = self.srm.network(
+            [
+                self.get_items_emb(items_ids),  # batch_size x n_items x embedding_dim
+                torch.stack(groups).to(
+                    self.device
+                ),  # batch_size x n_items x embedding_dim
+                torch.FloatTensor(fairness_allocation).to(
+                    self.device
+                ),  # batch_size x n_groups
+            ]
+        )
         return state

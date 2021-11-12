@@ -1,5 +1,5 @@
 import numpy as np
-from collections import deque
+
 
 class SumTree:
     def __init__(self, buffer_size):
@@ -35,17 +35,17 @@ class SumTree:
             else:
                 num -= self.tree[left]
                 current = right
-            
+
             if current >= self.buffer_size - 1:
                 break
 
         return self.tree[current], current, current - self.buffer_size + 1
 
-    def update_prioirty(self, priority, index):
+    def update_priority(self, priority, index):
         self.tree[index] = priority
         self.update_tree(index)
 
-    def sum_all_prioirty(self):
+    def sum_all_priority(self):
         return float(self.tree[0])
 
 
@@ -75,9 +75,9 @@ class MinTree:
         self.update_tree(self.index)
         self.index += 1
 
-    def update_prioirty(self, priority, index):
+    def update_priority(self, priority, index):
         self.tree[index] = priority
         self.update_tree(index)
 
-    def min_prioirty(self):
+    def min_priority(self):
         return float(self.tree[0])

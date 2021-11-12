@@ -1,24 +1,31 @@
 import numpy as np
 from src.model.tree import SumTree, MinTree
 import random
+import torch
 
 
 class PriorityExperienceReplay(object):
-    def __init__(self, buffer_size, embedding_dim, state_size):
+    def __init__(self, buffer_size, embedding_dim, state_size, device):
+        self.device = device
+
         self.buffer_size = buffer_size
         self.crt_idx = 0
         self.is_full = False
 
-        self.states = np.zeros((buffer_size, state_size), dtype=np.float32)
-        self.actions = np.zeros((buffer_size, embedding_dim), dtype=np.float32)
-        self.rewards = np.zeros((buffer_size), dtype=np.float32)
-        self.next_states = np.zeros((buffer_size, state_size), dtype=np.float32)
-        self.dones = np.zeros(buffer_size, np.bool)
+        self.states = torch.zeros((buffer_size, 16), dtype=torch.float32).to(device)
+        self.actions = torch.zeros(
+            (buffer_size, embedding_dim), dtype=torch.float32
+        ).to(device)
+        self.rewards = torch.zeros((buffer_size), dtype=torch.float32).to(device)
+        self.next_states = torch.zeros((buffer_size, 16), dtype=torch.float32).to(
+            device
+        )
+        self.dones = torch.zeros(buffer_size, dtype=torch.bool).to(device)
 
         self.sum_tree = SumTree(buffer_size)
         self.min_tree = MinTree(buffer_size)
 
-        self.max_prioirty = 1.0
+        self.max_priority = 1.0
         self.alpha = 0.6
         self.beta = 0.4
         self.beta_constant = 0.00001
@@ -30,8 +37,8 @@ class PriorityExperienceReplay(object):
         self.next_states[self.crt_idx] = next_state
         self.dones[self.crt_idx] = done
 
-        self.sum_tree.add_data(self.max_prioirty ** self.alpha)
-        self.min_tree.add_data(self.max_prioirty ** self.alpha)
+        self.sum_tree.add_data(self.max_priority ** self.alpha)
+        self.min_tree.add_data(self.max_priority ** self.alpha)
 
         self.crt_idx = (self.crt_idx + 1) % self.buffer_size
         if self.crt_idx == 0:
@@ -41,10 +48,10 @@ class PriorityExperienceReplay(object):
         rd_idx = []
         weight_batch = []
         index_batch = []
-        sum_priority = self.sum_tree.sum_all_prioirty()
+        sum_priority = self.sum_tree.sum_all_priority()
 
         N = self.buffer_size if self.is_full else self.crt_idx
-        min_priority = self.min_tree.min_prioirty() / sum_priority
+        min_priority = self.min_tree.min_priority() / sum_priority
         max_weight = (N * min_priority) ** (-self.beta)
 
         segment_size = sum_priority / batch_size
@@ -74,14 +81,14 @@ class PriorityExperienceReplay(object):
             batch_rewards,
             batch_next_states,
             batch_dones,
-            np.array(weight_batch),
+            torch.FloatTensor(weight_batch).to(self.device),
             index_batch,
         )
 
     def update_priority(self, priority, index):
-        self.sum_tree.update_prioirty(priority ** self.alpha, index)
-        self.min_tree.update_prioirty(priority ** self.alpha, index)
+        self.sum_tree.update_priority(priority ** self.alpha, index)
+        self.min_tree.update_priority(priority ** self.alpha, index)
         self.update_max_priority(priority ** self.alpha)
 
     def update_max_priority(self, priority):
-        self.max_prioirty = max(self.max_prioirty, priority)
+        self.max_priority = max(self.max_priority, priority)

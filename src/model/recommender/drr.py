@@ -1,5 +1,6 @@
 import os
 from tqdm import tqdm
+import time
 
 import torch
 import numpy as np
@@ -9,17 +10,14 @@ from src.model.actor import Actor
 from src.model.critic import Critic
 from src.model.ou_noise import OUNoise
 from src.model.replay_buffer import PriorityExperienceReplay
-from src.model.state_representation import (
-    DRRAveStateRepresentation,
-    FairRecStateRepresentation,
-)
+from src.model.state_representation import StateRepresentation
 
 import wandb
 
 
 STATE_REPRESENTATION = dict(
-    movie_lens_100k=DRRAveStateRepresentation,
-    movie_lens_100k_fair=FairRecStateRepresentation,
+    movie_lens_100k="drr",
+    movie_lens_100k_fair="fairrec",
 )
 
 
@@ -50,8 +48,9 @@ class DRRAgent:
         n_groups=4,
         fairness_constraints=[0.25, 0.25, 0.25, 0.25],
         no_cuda=False,
+        use_reward_model=True,
     ):
-
+        # no_cuda = True
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() and not no_cuda else "cpu"
         )
@@ -100,6 +99,14 @@ class DRRAgent:
             self.device,
         )
 
+        self.srm = StateRepresentation(
+            embedding_dim=self.embedding_dim,
+            n_groups=self.n_groups,
+            state_representation_type=STATE_REPRESENTATION[train_version],
+            learning_rate=0.001,
+            device=self.device,
+        )
+
         if self.emb_model == "user_movie":
             self.reward_model = PMF(users_num, items_num, self.embedding_dim).to(
                 self.device
@@ -111,23 +118,27 @@ class DRRAgent:
                 )
             )
 
+            # self.srm.load_pretrained_weights(
+            #     self.reward_model.user_embeddings.weight,
+            #     self.reward_model.item_embeddings.weight,
+            # )
+
             self.user_embeddings = self.reward_model.user_embeddings.weight.data
             self.item_embeddings = self.reward_model.item_embeddings.weight.data
+
         else:
             raise "Embedding Model Type not supported"
 
-        if self.env:
+        print("----- Reward Model: ", use_reward_model)
+        if self.env and use_reward_model:
             self.env.reward_model = self.reward_model
             self.env.device = self.device
-
-        self.srm_ave = STATE_REPRESENTATION[train_version](
-            self.embedding_dim, self.n_groups
-        ).to(self.device)
 
         self.buffer = PriorityExperienceReplay(
             self.replay_memory_size,
             self.embedding_dim,
             self.srm_size * self.embedding_dim,
+            self.device,
         )
         self.epsilon_for_priority = 1e-6
 
@@ -158,18 +169,20 @@ class DRRAgent:
                     "batch_size": self.batch_size,
                     "group_fairness": n_groups,
                     "fairness_constraints": self.fairness_constraints,
+                    "reward_model": use_reward_model,
                 },
             )
 
     def calculate_td_target(self, rewards, q_values, dones):
-        return rewards + ((1 - dones) * (self.discount_factor * q_values))
+        return rewards + ((1 - dones.long()) * (self.discount_factor * q_values))
 
     def recommend_item(self, action, recommended_items, top_k=False, items_ids=None):
         if items_ids == None:
             items_ids = list(set(i for i in range(self.items_num)) - recommended_items)
 
         items_ids = np.array(items_ids)
-        items_ebs = self.get_items_emb(items_ids)
+        with torch.no_grad():
+            items_ebs = self.get_items_emb(items_ids)
         action = torch.transpose(action, 1, 0).float()
 
         if top_k:
@@ -189,18 +202,16 @@ class DRRAgent:
 
         return items_eb
 
-    def get_state(self, user_id, items_ids):
-        user_eb = self.user_embeddings[user_id]
-        items_eb = self.get_items_emb(items_ids)
-
-        with torch.no_grad():
-            ## SRM state
-            state = self.srm_ave(
-                [
-                    user_eb.unsqueeze(0),
-                    items_eb.unsqueeze(0),
-                ]
-            )
+    def get_state(self, user_id, items_ids, group_counts=None):
+        ## SRM state
+        state = self.srm.network(
+            [
+                self.user_embeddings[user_id],
+                self.get_items_emb(items_ids).unsqueeze(0)
+                if len(self.get_items_emb(items_ids).shape) < 3
+                else self.get_items_emb(items_ids),
+            ]
+        )
 
         return state
 
@@ -254,18 +265,23 @@ class DRRAgent:
             user_id, items_ids, done = self.env.reset()
 
             while not done:
-                # observe current state & Find action
-                state = self.get_state(user_id, items_ids)
-
                 with torch.no_grad():
-                    ## action(ranking score)
-                    action = self.actor.network(state)
+                    # observe current state & Find action
+                    group_counts = list(self.env.group_count.values())
+                    state = self.get_state(
+                        np.array([user_id]),
+                        np.array([items_ids]),
+                        np.array([group_counts]),
+                    )
 
-                    ## epsilon-greedy exploration
-                    if not self.is_test:
-                        action = self.noise.get_action(
-                            action.detach().cpu().numpy()[0], steps
-                        ).to(self.device)
+                    ## action(ranking score)
+                    action = self.actor.network(state.detach())
+
+                ## epsilon-greedy exploration
+                if not self.is_test:
+                    action = self.noise.get_action(
+                        action.detach().cpu().numpy()[0], steps
+                    ).to(self.device)
 
                 ## item
                 recommended_item = self.recommend_item(
@@ -279,15 +295,24 @@ class DRRAgent:
                 )
 
                 # get next_state
-                next_state = self.get_state(user_id, next_items_ids)
+                # next_state = self.get_state([user_id], [[next_items_ids]])
+                next_group_counts = list(self.env.group_count.values())
 
-                # buffer
+                # experience replay
                 self.buffer.append(
-                    state.detach().cpu().numpy(),
-                    action.detach().cpu().numpy(),
-                    np.sum(reward) if top_k else reward,
-                    next_state.detach().cpu().numpy(),
-                    done,
+                    torch.Tensor(
+                        np.concatenate(([user_id], items_ids, group_counts), axis=0)
+                    ).to(self.device),
+                    action,
+                    torch.FloatTensor([np.sum(reward)]).to(self.device)
+                    if top_k
+                    else torch.FloatTensor([reward]).to(self.device),
+                    torch.Tensor(
+                        np.concatenate(
+                            ([user_id], next_items_ids, next_group_counts), axis=0
+                        )
+                    ).to(self.device),
+                    torch.Tensor([done]).to(self.device),
                 )
 
                 if self.buffer.crt_idx > self.learning_starts or self.buffer.is_full:
@@ -355,6 +380,7 @@ class DRRAgent:
                 self.save_model(
                     os.path.join(self.model_path, "actor_{}.h5".format(episode + 1)),
                     os.path.join(self.model_path, "critic_{}.h5".format(episode + 1)),
+                    os.path.join(self.model_path, "srm_{}.h5".format(episode + 1)),
                 )
 
         return (
@@ -376,27 +402,44 @@ class DRRAgent:
             index_batch,
         ) = self.buffer.sample(self.batch_size)
 
-        batch_states = torch.FloatTensor(batch_states).to(self.device)
-        batch_actions = torch.FloatTensor(batch_actions).to(self.device)
-        batch_rewards = torch.FloatTensor(batch_rewards).to(self.device)
-        batch_next_states = torch.FloatTensor(batch_next_states).to(self.device)
-        batch_dones = torch.FloatTensor(batch_dones).to(self.device)
-        weight_batch = torch.FloatTensor(weight_batch).to(self.device)
+        # batch_states = torch.FloatTensor(batch_states).to(self.device)
+        # batch_actions = torch.FloatTensor(batch_actions).to(self.device)
+        # batch_rewards = torch.FloatTensor(batch_rewards).to(self.device)
+        # batch_next_states = torch.FloatTensor(batch_next_states).to(self.device)
+        # batch_dones = torch.FloatTensor(batch_dones).to(self.device)
+        # weight_batch = torch.FloatTensor(weight_batch).to(self.device)
 
-        # set TD targets
-        target_next_action = self.actor.target_network(batch_next_states)
-
-        qs = self.critic.network(
+        states = self.get_state(
+            batch_states[:, 0].long().detach().cpu().numpy(),
+            batch_states[:, 1:6].long().detach().cpu().numpy(),
+            batch_states[:, 6:].long().detach().cpu().numpy(),
+        )
+        actions = self.actor.network(states)
+        policy_loss = self.critic.network(
             [
-                target_next_action,
-                batch_next_states,
+                actions,
+                states,
             ]
         )
+        policy_loss = -policy_loss.mean()
 
+        # Estimate target Q value
+        next_states = self.get_state(
+            batch_next_states[:, 0].long().detach().cpu().numpy(),
+            batch_next_states[:, 1:6].long().detach().cpu().numpy(),
+            batch_next_states[:, 6:].long().detach().cpu().numpy(),
+        )
+        target_next_action = self.actor.target_network(next_states)
         target_qs = self.critic.target_network(
             [
-                target_next_action,
-                batch_next_states,
+                target_next_action.detach(),
+                next_states,
+            ]
+        )
+        qs = self.critic.network(
+            [
+                target_next_action.detach(),
+                next_states,
             ]
         )
 
@@ -404,6 +447,7 @@ class DRRAgent:
             1
         )  # Double Q method
 
+        # set TD targets
         td_targets = self.calculate_td_target(
             batch_rewards,
             min_qs,
@@ -414,38 +458,33 @@ class DRRAgent:
         for (p, i) in zip(td_targets, index_batch):
             self.buffer.update_priority(abs(p[0]) + self.epsilon_for_priority, i)
 
-        # update critic network
+        # get Q values for current state
         value = self.critic.network(
             [
                 batch_actions,
-                batch_states,
+                states,
             ]
         )
-        value_loss = self.critic.loss(value, td_targets)
-        weighted_loss = torch.mean(value_loss * weight_batch)
-
-        self.critic.optimizer.zero_grad()
-        weighted_loss.backward(retain_graph=True)
-        self.critic.optimizer.step()
+        value_loss = self.critic.loss(value, td_targets)  # .detach())
+        value_loss = torch.mean(value_loss * weight_batch)
 
         # update actor network
-        loss = self.critic.network(
-            [
-                batch_actions,
-                batch_states,
-            ]
-        )
-        loss = -loss.mean()
-
+        self.srm.optimizer.zero_grad()
         self.actor.optimizer.zero_grad()
-        loss.backward(retain_graph=True)
+        policy_loss.backward(retain_graph=True)
         self.actor.optimizer.step()
+
+        # update critic network
+        self.critic.optimizer.zero_grad()
+        value_loss.backward(retain_graph=True)
+        self.critic.optimizer.step()
+        self.srm.optimizer.step()
 
         # target update
         self.actor.update_target_network()
         self.critic.update_target_network()
 
-        return weighted_loss.detach().cpu().numpy(), loss.detach().cpu().numpy()
+        return value_loss.detach().cpu().numpy(), policy_loss.detach().cpu().numpy()
 
     def evaluate(self, env, top_k=0, available_items=None):
         # episodic reward
@@ -523,15 +562,17 @@ class DRRAgent:
 
         return dcg, idcg
 
-    def save_model(self, actor_path, critic_path, buffer_path=None):
+    def save_model(self, actor_path, critic_path, srm_path, buffer_path=None):
         self.actor.save_weights(actor_path)
         self.critic.save_weights(critic_path)
+        self.srm.save_weights(srm_path)
         if buffer_path:
             import pickle
 
             with open(buffer_path, "wb") as f:
                 pickle.dump(self.buffer, f)
 
-    def load_model(self, actor_path, critic_path):
+    def load_model(self, actor_path, critic_path, srm_path):
         self.actor.load_weights(actor_path)
         self.critic.load_weights(critic_path)
+        self.srm.load_weights(srm_path)

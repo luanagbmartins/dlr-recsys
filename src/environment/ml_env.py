@@ -45,6 +45,10 @@ class OfflineEnv(object):
 
         self.n_groups = n_groups
         self.movies_groups = movies_groups
+        self.groups_movies = {
+            i: [k for k in movies_groups if movies_groups[k] == i]
+            for i in range(1, n_groups + 1)
+        }
         self.group_count = {k: 0 for k in range(1, self.n_groups + 1)}
         self.total_recommended_items = 0
         self.fairness_constraints = fairness_constraints

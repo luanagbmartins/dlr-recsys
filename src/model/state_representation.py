@@ -1,9 +1,5 @@
-# import tensorflow as tf
-import numpy as np
-
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 class Attention(nn.Module):
@@ -47,10 +43,11 @@ class Attention(nn.Module):
         return torch.sum(weighted_input, 1)
 
 
-class DRRAveStateRepresentation(nn.Module):
+class DRRAveStateRepresentationNetwork(nn.Module):
     def __init__(self, embedding_dim, n_groups=None):
-        super(DRRAveStateRepresentation, self).__init__()
+        super(DRRAveStateRepresentationNetwork, self).__init__()
         self.embedding_dim = embedding_dim
+
         self.drr_ave = torch.nn.Conv1d(in_channels=5, out_channels=1, kernel_size=1)
 
         self.initialize()
@@ -59,12 +56,20 @@ class DRRAveStateRepresentation(nn.Module):
         nn.init.uniform_(self.drr_ave.weight)
         self.drr_ave.bias.data.zero_()
 
+    # def load_weights(self, user_embeddings, item_embeddings, device):
+    #     self.user_embeddings = nn.Embedding.from_pretrained(user_embeddings).to(device)
+    #     self.item_embeddings = nn.Embedding.from_pretrained(item_embeddings).to(device)
+
     def forward(self, x):
-        drr_ave = self.drr_ave(x[1]).squeeze(1)
+        user = x[0]  # self.user_embeddings(x[0])
+        item = x[1]  # self.item_embeddings(x[1])
+
+        drr_ave = self.drr_ave(item).squeeze(1)
+
         output = torch.cat(
             (
-                x[0],
-                x[0] * drr_ave,
+                user,
+                user * drr_ave,
                 drr_ave,
             ),
             1,
@@ -72,25 +77,53 @@ class DRRAveStateRepresentation(nn.Module):
         return output
 
 
-class FairRecStateRepresentation(nn.Module):
+class FairRecStateRepresentationNetwork(nn.Module):
     def __init__(self, embedding_dim, n_groups):
-        super(FairRecStateRepresentation, self).__init__()
-        self.act = nn.ReLU()
-
+        super(FairRecStateRepresentationNetwork, self).__init__()
         self.embedding_dim = embedding_dim
 
+        self.act = nn.ReLU()
         self.fav = nn.Linear(n_groups, embedding_dim)
-
         self.attention_layer = Attention(embedding_dim, 5)
 
-    def forward(self, x):
-        group_mean = []
-        for group in x[1]:
-            group_mean.append(torch.mean(group / self.embedding_dim, axis=0))
-        group_mean = torch.stack(group_mean)
+    def initialize(self):
+        nn.init.uniform_(self.fav.weight)
+        self.fav.bias.data.zero_()
 
-        items = torch.add(x[0], group_mean).squeeze()
+    # def load_weights(self, user_embeddings, item_embeddings, device):
+    #     self.item_embeddings = nn.Embedding.from_pretrained(item_embeddings).to(device)
+
+    def forward(self, x):
+        items = torch.add(x[0], x[1]).squeeze()
         ups = self.attention_layer(items)
         fs = self.act(self.fav(x[2]))
 
         return torch.cat((ups, fs), 1)
+
+
+STATE_REPRESENTATION = dict(
+    drr=DRRAveStateRepresentationNetwork, fairrec=FairRecStateRepresentationNetwork
+)
+
+
+class StateRepresentation(object):
+    def __init__(
+        self, embedding_dim, n_groups, state_representation_type, learning_rate, device
+    ):
+        self.device = device
+        self.embedding_dim = embedding_dim
+        self.n_groups = n_groups
+        self.network = STATE_REPRESENTATION[state_representation_type](
+            embedding_dim, n_groups
+        ).to(device)
+
+        self.optimizer = torch.optim.Adam(self.network.parameters(), learning_rate)
+
+    # def load_pretrained_weights(self, user_embeddings, item_embeddings):
+    #     self.network.load_weights(user_embeddings, item_embeddings, self.device)
+
+    def save_weights(self, path):
+        torch.save(self.network.state_dict(), path)
+
+    def load_weights(self, path):
+        self.network.load_state_dict(torch.load(path))

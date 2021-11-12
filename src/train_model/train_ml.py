@@ -38,6 +38,7 @@ class MovieLens(luigi.Task):
 
     emb_model: str = luigi.Parameter(default="user_movie")
     embedding_network_weights: str = luigi.Parameter(default="")
+    use_reward_model: bool = luigi.BoolParameter(default=True)
 
     train_version: str = luigi.Parameter()
     use_wandb: bool = luigi.BoolParameter()
@@ -53,6 +54,7 @@ class MovieLens(luigi.Task):
             "critic_model": luigi.LocalTarget(
                 os.path.join(self.output_path, "critic.h5")
             ),
+            "srm_model": luigi.LocalTarget(os.path.join(self.output_path, "srm.h5")),
         }
 
     def run(self):
@@ -79,7 +81,7 @@ class MovieLens(luigi.Task):
         with open(_dataset_path["users_history_lens"], "rb") as pkl_file:
             dataset["users_history_lens"] = pickle.load(pkl_file)
 
-        with open(_dataset_path["movies_groups"], "rb") as pkl_file:
+        with open("data/ml-100k/movies_groups.pkl", "rb") as pkl_file:
             dataset["movies_groups"] = pickle.load(pkl_file)
 
         return dataset
@@ -122,6 +124,7 @@ class MovieLens(luigi.Task):
             embedding_network_weights_path=self.embedding_network_weights,
             n_groups=self.n_groups,
             fairness_constraints=self.fairness_constraints,
+            use_reward_model=self.use_reward_model,
         )
 
         print("---------- Start Training")
@@ -134,6 +137,7 @@ class MovieLens(luigi.Task):
         recommender.save_model(
             self.output()["actor_model"].path,
             self.output()["critic_model"].path,
+            self.output()["srm_model"].path,
             os.path.join(self.output_path, "buffer.pkl"),
         )
         print("---------- Finish Saving Model")
