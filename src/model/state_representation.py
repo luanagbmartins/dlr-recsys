@@ -48,9 +48,10 @@ class DRRAveStateRepresentationNetwork(nn.Module):
         super(DRRAveStateRepresentationNetwork, self).__init__()
         self.embedding_dim = embedding_dim
 
-        self.drr_ave = torch.nn.Conv1d(in_channels=5, out_channels=1, kernel_size=1)
+        # self.drr_ave = torch.nn.Conv1d(in_channels=5, out_channels=1, kernel_size=1)
+        self.attention_layer = Attention(embedding_dim, 5)
 
-        self.initialize()
+        # self.initialize()
 
     def initialize(self):
         nn.init.uniform_(self.drr_ave.weight)
@@ -61,10 +62,11 @@ class DRRAveStateRepresentationNetwork(nn.Module):
     #     self.item_embeddings = nn.Embedding.from_pretrained(item_embeddings).to(device)
 
     def forward(self, x):
-        user = x[0]  # self.user_embeddings(x[0])
-        item = x[1]  # self.item_embeddings(x[1])
+        user = x[0]
+        item = x[1]
 
-        drr_ave = self.drr_ave(item).squeeze(1)
+        # drr_ave = self.drr_ave(item).squeeze(1)
+        drr_ave = self.attention_layer(item)
 
         output = torch.cat(
             (

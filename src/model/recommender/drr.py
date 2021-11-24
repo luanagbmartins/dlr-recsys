@@ -1,6 +1,7 @@
 import os
 from tqdm import tqdm
 import time
+from operator import itemgetter
 
 import torch
 import numpy as np
@@ -203,13 +204,14 @@ class DRRAgent:
         return items_eb
 
     def get_state(self, user_id, items_ids, group_counts=None):
+
+        items_emb = self.get_items_emb(items_ids)
+
         ## SRM state
         state = self.srm.network(
             [
                 self.user_embeddings[user_id],
-                self.get_items_emb(items_ids).unsqueeze(0)
-                if len(self.get_items_emb(items_ids).shape) < 3
-                else self.get_items_emb(items_ids),
+                items_emb.unsqueeze(0) if len(items_emb.shape) < 3 else items_emb,
             ]
         )
 
@@ -250,7 +252,7 @@ class DRRAgent:
         sum_propfair = 0
         sum_reward = 0
 
-        for episode in tqdm(range(max_episode_num)):
+        for episode in range(max_episode_num):
 
             # episodic reward
             episode_reward = 0
@@ -260,6 +262,8 @@ class DRRAgent:
             mean_action = 0
             mean_precision = 0
             mean_ndcg = 0
+
+            list_recommended_item = []
 
             # environment
             user_id, items_ids, done = self.env.reset()
@@ -287,6 +291,7 @@ class DRRAgent:
                 recommended_item = self.recommend_item(
                     action, self.env.recommended_items, top_k=top_k
                 )
+                list_recommended_item.append(recommended_item)
 
                 # calculate reward and observe new state
                 ## Step
@@ -388,6 +393,7 @@ class DRRAgent:
             sum_ndcg / max_episode_num,
             sum_propfair / max_episode_num,
             sum_reward / max_episode_num,
+            {user_id: list_recommended_item},
         )
 
     def update_model(self):
@@ -402,17 +408,10 @@ class DRRAgent:
             index_batch,
         ) = self.buffer.sample(self.batch_size)
 
-        # batch_states = torch.FloatTensor(batch_states).to(self.device)
-        # batch_actions = torch.FloatTensor(batch_actions).to(self.device)
-        # batch_rewards = torch.FloatTensor(batch_rewards).to(self.device)
-        # batch_next_states = torch.FloatTensor(batch_next_states).to(self.device)
-        # batch_dones = torch.FloatTensor(batch_dones).to(self.device)
-        # weight_batch = torch.FloatTensor(weight_batch).to(self.device)
-
         states = self.get_state(
-            batch_states[:, 0].long().detach().cpu().numpy(),
-            batch_states[:, 1:6].long().detach().cpu().numpy(),
-            batch_states[:, 6:].long().detach().cpu().numpy(),
+            batch_states[:, 0].long().detach().cpu().numpy(),  # user_id
+            batch_states[:, 1:6].long().detach().cpu().numpy(),  # items_ids
+            batch_states[:, 6:].long().detach().cpu().numpy(),  # group_counts
         )
         actions = self.actor.network(states)
         policy_loss = self.critic.network(
@@ -465,7 +464,7 @@ class DRRAgent:
                 states,
             ]
         )
-        value_loss = self.critic.loss(value, td_targets)  # .detach())
+        value_loss = self.critic.loss(value, td_targets)
         value_loss = torch.mean(value_loss * weight_batch)
 
         # update actor network
@@ -486,13 +485,12 @@ class DRRAgent:
 
         return value_loss.detach().cpu().numpy(), policy_loss.detach().cpu().numpy()
 
-    def evaluate(self, env, top_k=0, available_items=None):
-        # episodic reward
-        episode_reward = 0
-        steps = 0
+    def offline_evaluate(self, env, top_k=0, available_items=None):
 
+        steps = 0
         mean_precision = 0
         mean_ndcg = 0
+        episode_reward = 0
 
         # Environment
         user_id, items_ids, done = env.reset()
@@ -528,29 +526,25 @@ class DRRAgent:
                 # precision
                 correct_num = top_k - correct_list.count(0)
                 mean_precision += correct_num / top_k
+
             else:
                 mean_precision += 1 if reward > 0 else 0
 
-            reward = np.sum(reward)
             items_ids = next_items_ids
-            episode_reward += reward
+
             steps += 1
+            episode_reward += np.sum(reward)
+
             available_items = (
                 available_items - set(recommended_item) if available_items else None
             )
 
-        mean_precision = mean_precision / steps
-        mean_ndcg = mean_ndcg / steps
-
-        propfair = 0
-        total_exp = np.sum(list(env.group_count.values()))
-        if total_exp > 0:
-            propfair = np.sum(
-                np.array(self.fairness_constraints)
-                * np.log(1 + np.array(list(env.group_count.values())) / total_exp)
-            )
-
-        return (mean_precision, mean_ndcg, propfair)
+        return (
+            mean_precision / steps,
+            mean_ndcg / steps,
+            episode_reward,
+            episode_reward / steps,
+        )
 
     def calculate_ndcg(self, rel, irel):
         dcg = 0

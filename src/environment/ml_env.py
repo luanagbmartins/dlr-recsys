@@ -165,11 +165,7 @@ class OfflineEnv(object):
 
             self.recommended_items.add(action)
 
-        if (
-            self.total_recommended_items > self.done_count
-            or len(self.recommended_items)
-            >= self.users_history_lens[list(self.users_dict.keys()).index(self.user)]
-        ):
+        if self.total_recommended_items >= self.done_count:
             self.done = True
 
         return self.items, reward, self.done, self.recommended_items
@@ -224,6 +220,7 @@ class OfflineFairEnv(OfflineEnv):
                 self.total_recommended_items += 1
 
                 _reward = self.get_reward(act)
+
                 if _reward > 0:
                     correctly_recommended.append(act)
                     rewards.append(self.get_fair_reward(group))
@@ -258,11 +255,7 @@ class OfflineFairEnv(OfflineEnv):
 
             self.recommended_items.add(action)
 
-        if (
-            len(self.recommended_items) > self.done_count
-            or len(self.recommended_items)
-            >= self.users_history_lens[list(self.users_dict.keys()).index(self.user)]
-        ):
+        if self.total_recommended_items >= self.done_count:
             self.done = True
 
         return self.items, reward, self.done, self.recommended_items

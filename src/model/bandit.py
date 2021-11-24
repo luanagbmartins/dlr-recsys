@@ -347,7 +347,7 @@ class WFairLinUCB(LinUCB):
         actions = wfair_ucb_scores[::-1][: self.len_list]
         self.update_fairness_status(actions)
 
-        return actions, ucb_scores, (np.array(_wfair) * np.absolute(ucb_scores))
+        return actions
 
 
 # @dataclass

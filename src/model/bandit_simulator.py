@@ -53,9 +53,6 @@ def run_bandit_simulation(
 
     cvr = []
     aligned_cvr = []
-    group_count = []
-    propfair = []
-    ufg = []
 
     for _ in range(epochs):
         selected_actions_list = list()
@@ -98,16 +95,7 @@ def run_bandit_simulation(
 
             selected_actions_list.append(selected_actions)
 
-        _propfair = policy_.propfair()
-        _cvr = cumulative_rewards / bandit_feedback["n_rounds"]
-        _ufg = policy_.propfair / max(
-            1 - (cumulative_rewards / bandit_feedback["n_rounds"]), 0.01
-        )
-
-        propfair.append(_propfair)
-        cvr.append(_cvr)
-        ufg.append(_ufg)
-        group_count.append(policy_.group_count)
+        cvr.append(cumulative_rewards / bandit_feedback["n_rounds"])
 
     with open("model/{}.pkl".format(policy_.policy_name), "wb") as file:
         pickle.dump(policy_, file)
@@ -116,4 +104,8 @@ def run_bandit_simulation(
         n_actions=bandit_feedback["action"].max() + 1,
         selected_actions=np.array(selected_actions_list),
     )
-    return action_dist, aligned_cvr, cvr, propfair, ufg, group_count
+    return (
+        action_dist,
+        aligned_cvr,
+        cvr,
+    )
