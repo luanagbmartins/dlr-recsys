@@ -252,7 +252,7 @@ class DRRAgent:
         sum_propfair = 0
         sum_reward = 0
 
-        for episode in range(max_episode_num):
+        for episode in tqdm(range(max_episode_num)):
 
             # episodic reward
             episode_reward = 0
