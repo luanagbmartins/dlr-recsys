@@ -13,4 +13,4 @@
 
 ## Avaliação
 - Para realizar a avaliação no ambiente simulado:
-    notebooks/evaluation_online.ipynb
+    `notebooks/evaluation_online.ipynb`
