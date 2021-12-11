@@ -41,9 +41,9 @@ class ML25MLoadAndPrepareDataset(luigi.Task):
             "users_history_lens": luigi.LocalTarget(
                 os.path.join(self.data_dir, "users_history_lens.pkl")
             ),
-            "movies_groups": luigi.LocalTarget(
-                os.path.join(self.data_dir, "movies_groups.pkl")
-            ),
+            # "movies_groups": luigi.LocalTarget(
+            #     os.path.join(self.data_dir, "movies_groups.pkl")
+            # ),
         }
 
     def run(self):
