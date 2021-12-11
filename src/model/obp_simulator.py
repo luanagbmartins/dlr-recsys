@@ -1,5 +1,4 @@
-from copy import deepcopy
-from typing import Callable
+# Code based on https://github.com/st-tech/zr-obp/blob/master/obp/simulator/simulator.py
 
 import pickle
 import numpy as np
@@ -29,6 +28,7 @@ def run_bandit_simulation(
     action_dist: array-like, shape (n_rounds, n_actions, len_list)
         Action choice probabilities (can be deterministic).
     """
+
     for key_ in ["action", "position", "reward", "pscore", "context"]:
         if key_ not in bandit_feedback:
             raise RuntimeError(f"Missing key of {key_} in 'bandit_feedback'.")

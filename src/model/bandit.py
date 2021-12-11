@@ -2,6 +2,7 @@ import numpy as np
 import datetime
 from dataclasses import dataclass, field
 from obp.policy.base import BaseContextFreePolicy, BaseContextualPolicy
+from obp.policy.logistic import BaseLogisticPolicy
 from obp.utils import check_array
 
 from sklearn.utils import check_random_state
@@ -32,6 +33,7 @@ class EpsilonGreedy(BaseContextFreePolicy):
     n_group: int = 0
     item_group: dict = field(default_factory=dict)
     fairness_weight: dict = field(default_factory=dict)
+    dim: int = 0
 
     def __post_init__(self) -> None:
         """Initialize Class."""
@@ -348,6 +350,92 @@ class WFairLinUCB(LinUCB):
         self.update_fairness_status(actions)
 
         return actions
+
+
+@dataclass
+class LogisticUCB(BaseLogisticPolicy):
+    """Logistic Upper Confidence Bound.
+    Parameters
+    ------------
+    dim: int
+        Number of dimensions of context vectors.
+    n_actions: int
+        Number of actions.
+    len_list: int, default=1
+        Length of a list of actions recommended in each impression.
+        When Open Bandit Dataset is used, 3 should be set.
+    batch_size: int, default=1
+        Number of samples used in a batch parameter update.
+    random_state: int, default=None
+        Controls the random seed in sampling actions.
+    alpha_: float, default=1.
+        Prior parameter for the online logistic regression.
+    lambda_: float, default=1.
+        Regularization hyperparameter for the online logistic regression.
+    epsilon: float, default=0.
+        Exploration hyperparameter that must be greater than or equal to 0.0.
+    References
+    ----------
+    Lihong Li, Wei Chu, John Langford, and Robert E Schapire.
+    "A Contextual-bandit Approach to Personalized News Article Recommendation," 2010.
+    """
+
+    epsilon: float = 0.0
+    n_group: int = 0
+    item_group: dict = field(default_factory=dict)
+    fairness_weight: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Initialize class."""
+        check_scalar(self.epsilon, "epsilon", float, min_val=0.0)
+
+        super().__post_init__()
+
+        self.policy_name = f"logistic_ucb_{self.epsilon}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+        self.group_count: dict = {}
+
+    def select_action(self, context: np.ndarray) -> np.ndarray:
+        """Select action for new data.
+        Parameters
+        ------------
+        context: array-like, shape (1, dim_context)
+            Observed context vector.
+        Returns
+        ----------
+        selected_actions: array-like, shape (len_list, )
+            List of selected actions.
+        """
+        theta = np.array(
+            [model.predict_proba(context) for model in self.model_list]
+        ).flatten()
+        std = np.array(
+            [
+                np.sqrt(np.sum((model._q ** (-1)) * (context ** 2)))
+                for model in self.model_list
+            ]
+        ).flatten()
+        ucb_score = theta + self.epsilon * std
+        actions = ucb_score.argsort()[::-1][: self.len_list]
+        self.update_fairness_status(actions)
+        return actions
+
+    def update_fairness_status(self, actions):
+        for action in actions:
+            self.group_count[self.item_group[action]] += 1
+
+    def clear_group_count(self):
+        self.group_count = {k: 0 for k in range(1, self.n_group + 1)}
+
+    @property
+    def propfair(self):
+        propfair = 0
+        total_exp = np.sum(list(self.group_count.values()))
+        if total_exp > 0:
+            propfair = np.sum(
+                np.array(list(self.fairness_weight.values()))
+                * np.log(1 + np.array(list(self.group_count.values())) / total_exp)
+            )
+        return propfair
 
 
 # @dataclass
