@@ -29,6 +29,9 @@
 ## Experimentos
     Versões disponíveis: movie_lens_100k, movie_lens_1m
 
+### Geração do dataset
+    `python -m luigi --module src.data.dataset DatasetGeneration --dataset-version movie_lens_100k --local-scheduler`
+
 ### DRR
 - Alterar os parâmetros desejados em `model/{versão}.yaml`
 - Rodar o treinamento:
