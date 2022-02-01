@@ -41,9 +41,9 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
             "users_history_lens": luigi.LocalTarget(
                 os.path.join(self.data_dir, "users_history_lens.pkl")
             ),
-            # "movies_groups": luigi.LocalTarget(
-            #     os.path.join(self.data_dir, "movies_groups.pkl")
-            # ),
+            "movies_groups": luigi.LocalTarget(
+                os.path.join(self.data_dir, "movies_groups.pkl")
+            ),
         }
 
     def run(self):
@@ -110,12 +110,7 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
         return datasets
 
     def prepareDataset(self, datasets):
-        # # Generate movies groups
-        # movies_groups = {
-        #     row[0]: random.randint(1, self.n_groups)
-        #     for _, row in datasets["movies"].iterrows()
-        # }
-
+        
         datasets["ratings"] = datasets["ratings"].sort_values("timestamp")
         datasets["ratings"] = datasets["ratings"].applymap(int)
 
@@ -170,8 +165,6 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
         with open(self.output()["users_history_lens"].path, "wb") as file:
             pickle.dump(users_history_lens, file)
 
-        # with open(self.output()["movies_groups"].path, "wb") as file:
-        #     pickle.dump(movies_groups, file)
 
     def _split_and_index(self, string):
         genres = [

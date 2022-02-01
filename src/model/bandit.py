@@ -148,6 +148,7 @@ class BaseLinPolicy(BaseContextualPolicy):
         """
         self.n_trial += 1
         self.action_counts[action] += 1
+        # self.update_fairness_status(action)
         # update the inverse matrix by the Woodbury formula
         self.A_inv_temp[action] -= (
             self.A_inv_temp[action]
@@ -162,6 +163,24 @@ class BaseLinPolicy(BaseContextualPolicy):
                 np.copy(self.A_inv_temp),
                 np.copy(self.b_temp),
             )
+
+    def update_fairness_status(self, action):
+        #for action in actions:
+        self.group_count[self.item_group[action]] += 1
+
+    def clear_group_count(self):
+        self.group_count = {k: 0 for k in range(1, self.n_group + 1)}
+
+    @property
+    def propfair(self):
+        propfair = 0
+        total_exp = np.sum(list(self.group_count.values()))
+        if total_exp > 0:
+            propfair = np.sum(
+                np.array(list(self.fairness_weight.values()))
+                * np.log(1 + np.array(list(self.group_count.values())) / total_exp)
+            )
+        return propfair
 
 
 @dataclass
@@ -236,27 +255,9 @@ class LinUCB(BaseLinPolicy):
         if available_items:
             ucb_scores = ucb_scores[available_items]
         actions = ucb_scores[::-1][: self.len_list]
-        self.update_fairness_status(actions)
+        # self.update_fairness_status(actions)
 
         return actions
-
-    def update_fairness_status(self, actions):
-        for action in actions:
-            self.group_count[self.item_group[action]] += 1
-
-    def clear_group_count(self):
-        self.group_count = {k: 0 for k in range(1, self.n_group + 1)}
-
-    @property
-    def propfair(self):
-        propfair = 0
-        total_exp = np.sum(list(self.group_count.values()))
-        if total_exp > 0:
-            propfair = np.sum(
-                np.array(list(self.fairness_weight.values()))
-                * np.log(1 + np.array(list(self.group_count.values())) / total_exp)
-            )
-        return propfair
 
 
 @dataclass

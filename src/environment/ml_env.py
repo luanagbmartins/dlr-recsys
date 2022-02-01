@@ -1,5 +1,8 @@
 import torch
 import numpy as np
+import pandas as pd
+from sklearn.metrics.pairwise import cosine_similarity
+
 
 
 class OfflineEnv(object):
@@ -55,6 +58,7 @@ class OfflineEnv(object):
 
         self.reward_model = reward_model
         self.use_only_reward_model = use_only_reward_model
+        self.item_embeddings = reward_model.item_embeddings.weight.data if reward_model else None
 
     def _generate_available_users(self):
         available_users = []
@@ -129,14 +133,15 @@ class OfflineEnv(object):
         ]
         self.done = False
         self.recommended_items = set(self.items)
+        self.correctly_recommended = set(self.items)
         self.group_count = {k: 0 for k in range(1, self.n_groups + 1)}
         self.total_recommended_items = 0
         return self.user, self.items, self.done
 
     def step(self, action, top_k=False):
-
+        
         if top_k:
-            correctly_recommended, rewards = [], []
+            _correctly_recommended, rewards = [], []
             for act in action:
                 self.group_count[self.movies_groups[act]] += 1
                 self.total_recommended_items += 1
@@ -145,12 +150,13 @@ class OfflineEnv(object):
                 rewards.append(_reward)
 
                 if _reward > 0:
-                    correctly_recommended.append(act)
+                    _correctly_recommended.append(act)
+                    self.correctly_recommended.add(act)
                 self.recommended_items.add(act)
 
             if max(rewards) > 0:
                 self.items = (
-                    self.items[len(correctly_recommended) :] + correctly_recommended
+                    self.items[len(_correctly_recommended) :] + _correctly_recommended
                 )
                 self.items = self.items[-self.state_size :]
             reward = rewards
@@ -162,6 +168,7 @@ class OfflineEnv(object):
             reward = self.get_reward(action)
             if reward > 0:
                 self.items = self.items[1:] + [action]
+                self.correctly_recommended.add(action)
 
             self.recommended_items.add(action)
 
@@ -200,14 +207,21 @@ class OfflineFairEnv(OfflineEnv):
             device,
         )
 
-    def get_fair_reward(self, group):
-        reward = self.fairness_constraints[group - 1] / np.sum(
+    def get_fair_reward(self, group, reward=None):
+
+        # user_likehood = self.item_embeddings[list(self.correctly_recommended)]
+        # user_likehood = pd.DataFrame(user_likehood)
+        # user_likehood = cosine_similarity(user_likehood, user_likehood)[np.triu_indices(user_likehood.shape[0], k=1)].mean()
+
+        _reward = self.fairness_constraints[group - 1] / np.sum(
             self.fairness_constraints
         )
         -(self.group_count[group] / np.sum(list(self.group_count.values())))
         +1
 
-        return reward
+        # _reward = (reward * user_likehood) + (_reward * (1 - user_likehood))
+
+        return _reward
 
     def step(self, action, top_k=False):
 
@@ -223,6 +237,9 @@ class OfflineFairEnv(OfflineEnv):
 
                 if _reward > 0:
                     correctly_recommended.append(act)
+                    self.correctly_recommended.add(act)
+
+                # rewards.append(self.get_fair_reward(group, _reward))
                     rewards.append(self.get_fair_reward(group))
                 elif _reward == 0 or _reward == -1.5:
                     rewards.append(_reward)
@@ -247,6 +264,10 @@ class OfflineFairEnv(OfflineEnv):
 
             if _reward > 0:
                 self.items = self.items[1:] + [action]
+                self.correctly_recommended.add(action)
+
+            # reward = self.get_fair_reward(group, _reward)
+
                 reward = self.get_fair_reward(group)
             elif _reward == 0 or _reward == -1.5:
                 reward = _reward

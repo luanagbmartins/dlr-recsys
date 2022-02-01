@@ -11,6 +11,8 @@ OUTPUT_PATH = os.path.join(os.getcwd(), "model")
 TRAINER = dict(
     movie_lens_100k=MovieLens,
     movie_lens_100k_fair=MovieLens,
+    movie_lens_1m=MovieLens,
+    movie_lens_1m_fair=MovieLens,
 )
 
 

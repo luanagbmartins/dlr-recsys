@@ -46,7 +46,6 @@ class MovieLensDataset(BaseRealBanditDataset):
         self.state_size = state_size
 
         self.data_path = os.path.join(data_path, "ml-100k")
-        # self.download_data("ml-100k", data_path)
         self.load_raw_data(filter_ids)
         self.pre_process()
 
@@ -69,36 +68,6 @@ class MovieLensDataset(BaseRealBanditDataset):
     def len_list(self) -> int:
         """Length of recommendation lists."""
         return 1
-
-    def download_data(self, name, output_path, cache=True) -> None:
-        for url in DATASETS[name]:
-
-            output_file = os.path.join(output_path, name, os.path.basename(url))
-            if not os.path.isfile(output_file) or not cache:
-                # Streaming, so we can iterate over the response.
-                r = requests.get(url, stream=True)
-
-                # Total size in bytes.
-                total_size = int(r.headers.get("content-length", 0))
-                block_size = 1024
-                wrote = 0
-                os.makedirs(os.path.split(output_file)[0], exist_ok=True)
-                with open(output_file, "wb") as f:
-                    for data in tqdm(
-                        r.iter_content(block_size),
-                        total=math.ceil(total_size // block_size),
-                        unit="KB",
-                        unit_scale=True,
-                    ):
-                        wrote = wrote + len(data)
-                        f.write(data)
-                if total_size != 0 and wrote != total_size:
-                    raise ConnectionError("ERROR, something went wrong")
-
-            print(output_file)
-            if output_file.endswith(".zip"):
-                with zipfile.ZipFile(output_file, "r") as zip_ref:
-                    zip_ref.extractall(output_path)
 
     def load_raw_data(self, filter_ids=None) -> None:
         """Load raw open bandit dataset."""
@@ -243,9 +212,12 @@ class MovieLensDataset(BaseRealBanditDataset):
         )
 
         self.action = self.data["movie_id"].values
-        self.reward = (
-            self.data["rating"].apply(lambda x: 0 if x < 4 else 1).values
-        )  # 0.5 * (self.data["rating"].values - 3)
+
+        # self.reward = (
+        #     self.data["rating"].apply(lambda x: 0 if x < 4 else 1).values
+        # ) 
+        self.reward = 0.5 * (self.data["rating"].values - 3)
+        
         self.pscore = np.ones_like(self.action, dtype=int) * (
             1 / (self.item_context["movie_id"].max() + 1)
         )

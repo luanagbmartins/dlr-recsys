@@ -19,6 +19,8 @@ import wandb
 STATE_REPRESENTATION = dict(
     movie_lens_100k="drr",
     movie_lens_100k_fair="fairrec",
+    movie_lens_1m="drr",
+    movie_lens_1m_fair="fairrec",
 )
 
 
@@ -133,6 +135,7 @@ class DRRAgent:
         print("----- Reward Model: ", use_reward_model)
         if self.env and use_reward_model:
             self.env.reward_model = self.reward_model
+            self.env.item_embeddings = self.item_embeddings
             self.env.device = self.device
 
         self.buffer = PriorityExperienceReplay(

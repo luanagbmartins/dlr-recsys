@@ -5,14 +5,13 @@ import numpy as np
 from tqdm import tqdm
 
 from obp.policy.policy_type import PolicyType
-from obp.types import BanditFeedback, BanditPolicy
 from obp.utils import check_bandit_feedback_inputs
 from obp.utils import convert_to_action_dist
 
 
 def run_bandit_simulation(
-    bandit_feedback: BanditFeedback,
-    policy: BanditPolicy,
+    bandit_feedback,
+    policy,
     epochs: int,
 ):
 
@@ -53,6 +52,7 @@ def run_bandit_simulation(
 
     cvr = []
     aligned_cvr = []
+    propfair = []
 
     for _ in range(epochs):
         selected_actions_list = list()
@@ -91,11 +91,18 @@ def run_bandit_simulation(
                 # For CTR calculation
                 aligned_time_steps += 1
                 cumulative_rewards += reward_
-                aligned_cvr.append(cumulative_rewards / aligned_time_steps)
+                aligned_cvr.append(float(cumulative_rewards) / float(aligned_time_steps))
 
             selected_actions_list.append(selected_actions)
 
-        cvr.append(cumulative_rewards / bandit_feedback["n_rounds"])
+        cvr.append(float(cumulative_rewards) / float(bandit_feedback["n_rounds"]))
+        propfair.append(policy_.propfair)
+
+        print("Cumulative reward:", cumulative_rewards)
+        print("Aligned time steps:", aligned_time_steps)
+        print("Aligned CTR:", aligned_cvr[-1])
+        print("CVR:", cvr[-1])
+        print("Propfair:", propfair[-1])
 
     with open("model/{}.pkl".format(policy_.policy_name), "wb") as file:
         pickle.dump(policy_, file)
@@ -108,4 +115,5 @@ def run_bandit_simulation(
         action_dist,
         aligned_cvr,
         cvr,
+        propfair
     )

@@ -81,7 +81,7 @@ class MovieLens(luigi.Task):
         with open(_dataset_path["users_history_lens"], "rb") as pkl_file:
             dataset["users_history_lens"] = pickle.load(pkl_file)
 
-        with open("data/ml-100k/movies_groups.pkl", "rb") as pkl_file:
+        with open(_dataset_path["movies_groups"], "rb") as pkl_file:
             dataset["movies_groups"] = pickle.load(pkl_file)
 
         return dataset
