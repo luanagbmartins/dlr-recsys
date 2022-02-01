@@ -298,7 +298,7 @@ class DRRAgent:
 
                 # calculate reward and observe new state
                 ## Step
-                next_items_ids, reward, done, _ = self.env.step(
+                next_items_ids, reward, done, info = self.env.step(
                     recommended_item, top_k=top_k
                 )
 
@@ -337,10 +337,10 @@ class DRRAgent:
                 steps += 1
 
                 if top_k:
-                    correct_list = [1 if r > 0 else 0 for r in reward]
+                    correct_list = [1 if r > 0 else 0 for r in info["precision"]]
                     # ndcg
                     dcg, idcg = self.calculate_ndcg(
-                        correct_list, [1 for _ in range(len(reward))]
+                        correct_list, [1 for _ in range(len(info["precision"]))]
                     )
                     mean_ndcg += dcg / idcg
 
@@ -348,7 +348,7 @@ class DRRAgent:
                     correct_num = top_k - correct_list.count(0)
                     mean_precision += correct_num / top_k
                 else:
-                    mean_precision += 1 if reward > 0 else 0
+                    mean_precision += info["precision"]
 
                 if done:
                     propfair = 0
@@ -516,13 +516,13 @@ class DRRAgent:
 
             # Calculate reward and observe new state (in env)
             ## Step
-            next_items_ids, reward, done, _ = env.step(recommended_item, top_k=top_k)
+            next_items_ids, reward, done, info = env.step(recommended_item, top_k=top_k)
 
             if top_k:
-                correct_list = [1 if r > 0 else 0 for r in reward]
+                correct_list = [1 if r > 0 else 0 for r in info["precision"]]
                 # ndcg
                 dcg, idcg = self.calculate_ndcg(
-                    correct_list, [1 for _ in range(len(reward))]
+                    correct_list, [1 for _ in range(len(info["precision"]))]
                 )
                 mean_ndcg += dcg / idcg
 
@@ -531,7 +531,7 @@ class DRRAgent:
                 mean_precision += correct_num / top_k
 
             else:
-                mean_precision += 1 if reward > 0 else 0
+                mean_precision += info["precision"]
 
             items_ids = next_items_ids
 

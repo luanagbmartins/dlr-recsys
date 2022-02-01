@@ -4,7 +4,6 @@ import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 
 
-
 class OfflineEnv(object):
     def __init__(
         self,
@@ -58,7 +57,9 @@ class OfflineEnv(object):
 
         self.reward_model = reward_model
         self.use_only_reward_model = use_only_reward_model
-        self.item_embeddings = reward_model.item_embeddings.weight.data if reward_model else None
+        self.item_embeddings = (
+            reward_model.item_embeddings.weight.data if reward_model else None
+        )
 
     def _generate_available_users(self):
         available_users = []
@@ -139,8 +140,9 @@ class OfflineEnv(object):
         return self.user, self.items, self.done
 
     def step(self, action, top_k=False):
-        
+
         if top_k:
+            precision = []
             _correctly_recommended, rewards = [], []
             for act in action:
                 self.group_count[self.movies_groups[act]] += 1
@@ -153,6 +155,7 @@ class OfflineEnv(object):
                     _correctly_recommended.append(act)
                     self.correctly_recommended.add(act)
                 self.recommended_items.add(act)
+                precision.append(1 if _reward > 0 else 0)
 
             if max(rewards) > 0:
                 self.items = (
@@ -162,6 +165,7 @@ class OfflineEnv(object):
             reward = rewards
 
         else:
+            precision = 0
             self.group_count[self.movies_groups[action]] += 1
             self.total_recommended_items += 1
 
@@ -171,11 +175,17 @@ class OfflineEnv(object):
                 self.correctly_recommended.add(action)
 
             self.recommended_items.add(action)
+            precision += 1 if reward > 0 else 0
 
         if self.total_recommended_items >= self.done_count:
             self.done = True
 
-        return self.items, reward, self.done, self.recommended_items
+        return (
+            self.items,
+            reward,
+            self.done,
+            {"recommended_items": self.recommended_items, "precision": precision},
+        )
 
 
 class OfflineFairEnv(OfflineEnv):
@@ -228,6 +238,7 @@ class OfflineFairEnv(OfflineEnv):
         if top_k:
             correctly_recommended = []
             rewards = []
+            precision = []
             for act in action:
                 group = self.movies_groups[act]
                 self.group_count[group] += 1
@@ -239,7 +250,7 @@ class OfflineFairEnv(OfflineEnv):
                     correctly_recommended.append(act)
                     self.correctly_recommended.add(act)
 
-                # rewards.append(self.get_fair_reward(group, _reward))
+                    # rewards.append(self.get_fair_reward(group, _reward))
                     rewards.append(self.get_fair_reward(group))
                 elif _reward == 0 or _reward == -1.5:
                     rewards.append(_reward)
@@ -247,6 +258,7 @@ class OfflineFairEnv(OfflineEnv):
                     rewards.append(-1)
 
                 self.recommended_items.add(act)
+                precision.append(1 if _reward > 0 else 0)
 
             if max(rewards) > 0:
                 self.items = (
@@ -256,6 +268,8 @@ class OfflineFairEnv(OfflineEnv):
             reward = rewards
 
         else:
+            precision = 0
+
             group = self.movies_groups[action]
             self.group_count[group] += 1
             self.total_recommended_items += 1
@@ -266,17 +280,23 @@ class OfflineFairEnv(OfflineEnv):
                 self.items = self.items[1:] + [action]
                 self.correctly_recommended.add(action)
 
-            # reward = self.get_fair_reward(group, _reward)
+                # reward = self.get_fair_reward(group, _reward)
 
                 reward = self.get_fair_reward(group)
             elif _reward == 0 or _reward == -1.5:
                 reward = _reward
             else:
-                reward = -1
+                reward = -1.5
 
             self.recommended_items.add(action)
+            precision += 1 if _reward > 0 else 0
 
         if self.total_recommended_items >= self.done_count:
             self.done = True
 
-        return self.items, reward, self.done, self.recommended_items
+        return (
+            self.items,
+            reward,
+            self.done,
+            {"recommended_items": self.recommended_items, "precision": precision},
+        )
