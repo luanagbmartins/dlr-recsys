@@ -14,5 +14,5 @@ model/*
 
 data/*
 !data/*.yaml
-!data/ml-100k/movies_groups.pkl
-!data/ml-1m/movies_groups.pkl
+!data/ml-100k/item_groups.pkl
+!data/ml-1m/item_groups.pkl
