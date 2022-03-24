@@ -44,22 +44,18 @@ class Attention(nn.Module):
 
 
 class DRRAveStateRepresentationNetwork(nn.Module):
-    def __init__(self, embedding_dim, n_groups=None):
+    def __init__(self, embedding_dim, state_size, n_groups=None):
         super(DRRAveStateRepresentationNetwork, self).__init__()
         self.embedding_dim = embedding_dim
 
-        # self.drr_ave = torch.nn.Conv1d(in_channels=5, out_channels=1, kernel_size=1)
-        self.attention_layer = Attention(embedding_dim, 5)
-
+        # self.drr_ave = torch.nn.Conv1d(in_channels=state_size, out_channels=1, kernel_size=1)
         # self.initialize()
 
-    def initialize(self):
-        nn.init.uniform_(self.drr_ave.weight)
-        self.drr_ave.bias.data.zero_()
+        self.attention_layer = Attention(embedding_dim, state_size)
 
-    # def load_weights(self, user_embeddings, item_embeddings, device):
-    #     self.user_embeddings = nn.Embedding.from_pretrained(user_embeddings).to(device)
-    #     self.item_embeddings = nn.Embedding.from_pretrained(item_embeddings).to(device)
+    # def initialize(self):
+    #     nn.init.uniform_(self.drr_ave.weight)
+    #     self.drr_ave.bias.data.zero_()
 
     def forward(self, x):
         user = x[0]
@@ -80,13 +76,13 @@ class DRRAveStateRepresentationNetwork(nn.Module):
 
 
 class FairRecStateRepresentationNetwork(nn.Module):
-    def __init__(self, embedding_dim, n_groups):
+    def __init__(self, embedding_dim, state_size, n_groups):
         super(FairRecStateRepresentationNetwork, self).__init__()
         self.embedding_dim = embedding_dim
 
         self.act = nn.ReLU()
         self.fav = nn.Linear(n_groups, embedding_dim)
-        self.attention_layer = Attention(embedding_dim, 5)
+        self.attention_layer = Attention(embedding_dim, state_size)
 
     def initialize(self):
         nn.init.uniform_(self.fav.weight)
@@ -96,10 +92,12 @@ class FairRecStateRepresentationNetwork(nn.Module):
     #     self.item_embeddings = nn.Embedding.from_pretrained(item_embeddings).to(device)
 
     def forward(self, x):
+        # user = x[3]
         items = torch.add(x[0], x[1]).squeeze()
         ups = self.attention_layer(items)
         fs = self.act(self.fav(x[2]))
 
+        # return torch.cat((user, user * ups, ups, fs), 1)
         return torch.cat((ups, fs), 1)
 
 
@@ -110,13 +108,19 @@ STATE_REPRESENTATION = dict(
 
 class StateRepresentation(object):
     def __init__(
-        self, embedding_dim, n_groups, state_representation_type, learning_rate, device
+        self,
+        state_size,
+        embedding_dim,
+        n_groups,
+        state_representation_type,
+        learning_rate,
+        device,
     ):
         self.device = device
         self.embedding_dim = embedding_dim
         self.n_groups = n_groups
         self.network = STATE_REPRESENTATION[state_representation_type](
-            embedding_dim, n_groups
+            embedding_dim, state_size, n_groups
         ).to(device)
 
         self.optimizer = torch.optim.Adam(self.network.parameters(), learning_rate)

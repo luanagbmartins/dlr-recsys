@@ -16,7 +16,6 @@ class FairRecAgent(DRRAgent):
         srm_size,
         model_path,
         embedding_network_weights_path,
-        emb_model,
         train_version,
         is_test=False,
         use_wandb=False,
@@ -44,7 +43,6 @@ class FairRecAgent(DRRAgent):
             srm_size=srm_size,
             model_path=model_path,
             embedding_network_weights_path=embedding_network_weights_path,
-            emb_model=emb_model,
             train_version=train_version,
             is_test=is_test,
             use_wandb=use_wandb,
@@ -70,7 +68,7 @@ class FairRecAgent(DRRAgent):
         fairness_allocation = []
         for batch_item, batch_group in zip(items_ids, group_counts):
 
-            _groups = list(itemgetter(*batch_item)(self.env.movies_groups))
+            _groups = list(itemgetter(*batch_item)(self.env.item_groups))
             groups_id = list(itemgetter(*_groups)(self.env.groups_movies))
             groups.append(
                 torch.stack(
@@ -96,6 +94,7 @@ class FairRecAgent(DRRAgent):
                 torch.FloatTensor(fairness_allocation).to(
                     self.device
                 ),  # batch_size x n_groups
+                # self.user_embeddings[user_id],
             ]
         )
         return state

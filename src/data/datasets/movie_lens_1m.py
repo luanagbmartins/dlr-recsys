@@ -23,7 +23,7 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
 
     def output(self):
         return {
-            "movies_df": luigi.LocalTarget(os.path.join(self.data_dir, "movies.csv")),
+            "items_df": luigi.LocalTarget(os.path.join(self.data_dir, "movies.csv")),
             "users_df": luigi.LocalTarget(os.path.join(self.data_dir, "users.csv")),
             "ratings_df": luigi.LocalTarget(os.path.join(self.data_dir, "ratings.csv")),
             "train_users_dict": luigi.LocalTarget(
@@ -41,8 +41,8 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
             "users_history_lens": luigi.LocalTarget(
                 os.path.join(self.data_dir, "users_history_lens.pkl")
             ),
-            "movies_groups": luigi.LocalTarget(
-                os.path.join(self.data_dir, "movies_groups.pkl")
+            "item_groups": luigi.LocalTarget(
+                os.path.join(self.data_dir, "item_groups.pkl")
             ),
         }
 
@@ -110,7 +110,7 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
         return datasets
 
     def prepareDataset(self, datasets):
-        
+
         datasets["ratings"] = datasets["ratings"].sort_values("timestamp")
         datasets["ratings"] = datasets["ratings"].applymap(int)
 
@@ -137,6 +137,12 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
         items_num = max(datasets["ratings"]["movie_id"]) + 1
 
         print(users_num, items_num)
+
+        # items groups
+        z = np.random.geometric(p=0.35, size=items_num)
+        w = z % self.n_groups
+        w = [i if i > 0 else self.n_groups for i in w]
+        item_groups = {i: w[i] for i in range(items_num)}
 
         # Training setting
         train_users_num = int(users_num * 0.8)
@@ -165,6 +171,8 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
         with open(self.output()["users_history_lens"].path, "wb") as file:
             pickle.dump(users_history_lens, file)
 
+        with open(self.output()["item_groups"].path, "wb") as file:
+            pickle.dump(item_groups, file)
 
     def _split_and_index(self, string):
         genres = [

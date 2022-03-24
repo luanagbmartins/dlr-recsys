@@ -1,1 +1,1 @@
-from .train_ml import MovieLens
+from .train_rsrl import RSRL

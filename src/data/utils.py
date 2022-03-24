@@ -11,6 +11,10 @@ DATASETS = {
     "ml-1m": ["https://files.grouplens.org/datasets/movielens/ml-1m.zip"],
     "ml-100k": ["https://files.grouplens.org/datasets/movielens/ml-100k.zip"],
     "ml-25m": ["https://files.grouplens.org/datasets/movielens/ml-25m.zip"],
+    "trivago": [
+        "https://recsys2019data.trivago.com/train.csv",
+        "https://recsys2019data.trivago.com/item_metadata.csv",
+    ],
 }
 
 

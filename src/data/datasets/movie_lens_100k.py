@@ -24,7 +24,7 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
 
     def output(self):
         return {
-            "movies_df": luigi.LocalTarget(os.path.join(self.data_dir, "movies.csv")),
+            "items_df": luigi.LocalTarget(os.path.join(self.data_dir, "movies.csv")),
             "users_df": luigi.LocalTarget(os.path.join(self.data_dir, "users.csv")),
             "ratings_df": luigi.LocalTarget(os.path.join(self.data_dir, "ratings.csv")),
             "train_users_dict": luigi.LocalTarget(
@@ -42,8 +42,8 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
             "users_history_lens": luigi.LocalTarget(
                 os.path.join(self.data_dir, "users_history_lens.pkl")
             ),
-            "movies_groups": luigi.LocalTarget(
-                os.path.join(self.data_dir, "movies_groups.pkl")
+            "item_groups": luigi.LocalTarget(
+                os.path.join(self.data_dir, "item_groups.pkl")
             ),
         }
 
@@ -128,12 +128,6 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
 
     def prepareDataset(self, datasets):
 
-        # # Generate movies groups
-        # movies_groups = {
-        #     row[0]: random.randint(1, self.n_groups)
-        #     for _, row in datasets["movies"].iterrows()
-        # }
-
         datasets["ratings"] = datasets["ratings"].sort_values("timestamp")
         datasets["ratings"] = datasets["ratings"].applymap(int)
 
@@ -160,6 +154,12 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
         items_num = max(datasets["ratings"]["movie_id"]) + 1
 
         print(users_num, items_num)
+
+        # items groups
+        z = np.random.geometric(p=0.35, size=items_num)
+        w = z % self.n_groups
+        w = [i if i > 0 else self.n_groups for i in w]
+        item_groups = {i: w[i] for i in range(items_num)}
 
         # Training setting
         train_users_num = int(users_num * 0.8)
@@ -189,5 +189,5 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
         with open(self.output()["users_history_lens"].path, "wb") as file:
             pickle.dump(users_history_lens, file)
 
-        # with open(self.output()["movies_groups"].path, "wb") as file:
-        #     pickle.dump(movies_groups, file)
+        with open(self.output()["item_groups"].path, "wb") as file:
+            pickle.dump(item_groups, file)

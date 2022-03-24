@@ -21,6 +21,7 @@ STATE_REPRESENTATION = dict(
     movie_lens_100k_fair="fairrec",
     movie_lens_1m="drr",
     movie_lens_1m_fair="fairrec",
+    trivago="drr",
 )
 
 
@@ -34,7 +35,6 @@ class DRRAgent:
         srm_size,
         model_path,
         embedding_network_weights_path,
-        emb_model,
         train_version,
         is_test=False,
         use_wandb=False,
@@ -59,13 +59,12 @@ class DRRAgent:
         )
 
         self.env = env
-
+        self.state_size = state_size
         self.users_num = users_num
         self.items_num = items_num
 
         self.model_path = model_path
 
-        self.emb_model = emb_model
         self.embedding_network_weights_path = embedding_network_weights_path
 
         self.embedding_dim = embedding_dim
@@ -103,6 +102,7 @@ class DRRAgent:
         )
 
         self.srm = StateRepresentation(
+            state_size=state_size,
             embedding_dim=self.embedding_dim,
             n_groups=self.n_groups,
             state_representation_type=STATE_REPRESENTATION[train_version],
@@ -110,27 +110,18 @@ class DRRAgent:
             device=self.device,
         )
 
-        if self.emb_model == "user_movie":
-            self.reward_model = PMF(users_num, items_num, self.embedding_dim).to(
-                self.device
+        self.reward_model = PMF(users_num, items_num, self.embedding_dim).to(
+            self.device
+        )
+        self.reward_model.load_state_dict(
+            torch.load(
+                self.embedding_network_weights_path,
+                map_location=torch.device(self.device),
             )
-            self.reward_model.load_state_dict(
-                torch.load(
-                    self.embedding_network_weights_path,
-                    map_location=torch.device(self.device),
-                )
-            )
+        )
 
-            # self.srm.load_pretrained_weights(
-            #     self.reward_model.user_embeddings.weight,
-            #     self.reward_model.item_embeddings.weight,
-            # )
-
-            self.user_embeddings = self.reward_model.user_embeddings.weight.data
-            self.item_embeddings = self.reward_model.item_embeddings.weight.data
-
-        else:
-            raise "Embedding Model Type not supported"
+        self.user_embeddings = self.reward_model.user_embeddings.weight.data
+        self.item_embeddings = self.reward_model.item_embeddings.weight.data
 
         print("----- Reward Model: ", use_reward_model)
         if self.env and use_reward_model:
@@ -139,10 +130,10 @@ class DRRAgent:
             self.env.device = self.device
 
         self.buffer = PriorityExperienceReplay(
-            self.replay_memory_size,
-            self.embedding_dim,
-            self.srm_size * self.embedding_dim,
-            self.device,
+            buffer_size=self.replay_memory_size,
+            embedding_dim=self.embedding_dim,
+            obs_size=1 + self.state_size + self.n_groups,
+            device=self.device,
         )
         self.epsilon_for_priority = 1e-6
 
@@ -160,7 +151,6 @@ class DRRAgent:
                     "users_num": users_num,
                     "items_num": items_num,
                     "state_size": state_size,
-                    "emb_model": emb_model,
                     "embedding_dim": self.embedding_dim,
                     "actor_hidden_dim": self.actor_hidden_dim,
                     "actor_learning_rate": self.actor_learning_rate,
@@ -199,10 +189,7 @@ class DRRAgent:
             return items_ids[item_idx]
 
     def get_items_emb(self, items_ids):
-        if self.emb_model == "user_movie":
-            items_eb = self.item_embeddings[items_ids]
-        else:
-            raise "Emb Model Type not supported"
+        items_eb = self.item_embeddings[items_ids]
 
         return items_eb
 
@@ -226,29 +213,37 @@ class DRRAgent:
 
         if load_model:
             # Get list of checkpoints
-            actor_checkpoints = sorted(
+            actor_checkpoint = sorted(
                 [
-                    int(f.split("_")[1])
+                    int((f.split("_")[1]).split(".")[0])
                     for f in os.listdir(self.model_path)
-                    if f.startswith("actor")
+                    if f.startswith("actor_")
                 ]
-            )
-            critic_checkpoints = sorted(
+            )[-1]
+            critic_checkpoint = sorted(
                 [
-                    int(f.split("_")[1])
+                    int((f.split("_")[1]).split(".")[0])
                     for f in os.listdir(self.model_path)
-                    if f.startswith("critic")
+                    if f.startswith("critic_")
                 ]
-            )
+            )[-1]
+            srm_checkpoint = sorted(
+                [
+                    int((f.split("_")[1]).split(".")[0])
+                    for f in os.listdir(self.model_path)
+                    if f.startswith("srm_")
+                ]
+            )[-1]
+
             self.load_model(
-                os.path.join(
-                    self.model_path, "actor_{}.h5".format(actor_checkpoints[-1])
-                ),
-                os.path.join(
-                    self.model_path, "critic_{}.h5".format(critic_checkpoints[-1])
-                ),
+                os.path.join(self.model_path, "actor_{}.h5".format(actor_checkpoint)),
+                os.path.join(self.model_path, "critic_{}.h5".format(critic_checkpoint)),
+                os.path.join(self.model_path, "srm_{}.h5".format(srm_checkpoint)),
             )
             print("----- Completely load weights!")
+            print("Actor checkpoint: ", actor_checkpoint)
+            print("Critic checkpoint: ", critic_checkpoint)
+            print("SRM checkpoint: ", srm_checkpoint)
 
         sum_precision = 0
         sum_ndcg = 0
@@ -337,7 +332,7 @@ class DRRAgent:
                 steps += 1
 
                 if top_k:
-                    correct_list = [1 if r > 0 else 0 for r in info["precision"]]
+                    correct_list = info["precision"]
                     # ndcg
                     dcg, idcg = self.calculate_ndcg(
                         correct_list, [1 for _ in range(len(info["precision"]))]
@@ -413,8 +408,16 @@ class DRRAgent:
 
         states = self.get_state(
             batch_states[:, 0].long().detach().cpu().numpy(),  # user_id
-            batch_states[:, 1:6].long().detach().cpu().numpy(),  # items_ids
-            batch_states[:, 6:].long().detach().cpu().numpy(),  # group_counts
+            batch_states[:, 1 : self.state_size + 1]
+            .long()
+            .detach()
+            .cpu()
+            .numpy(),  # items_ids
+            batch_states[:, self.state_size + 1 :]
+            .long()
+            .detach()
+            .cpu()
+            .numpy(),  # group_counts
         )
         actions = self.actor.network(states)
         policy_loss = self.critic.network(
@@ -428,8 +431,8 @@ class DRRAgent:
         # Estimate target Q value
         next_states = self.get_state(
             batch_next_states[:, 0].long().detach().cpu().numpy(),
-            batch_next_states[:, 1:6].long().detach().cpu().numpy(),
-            batch_next_states[:, 6:].long().detach().cpu().numpy(),
+            batch_next_states[:, 1 : self.state_size + 1].long().detach().cpu().numpy(),
+            batch_next_states[:, self.state_size + 1 :].long().detach().cpu().numpy(),
         )
         target_next_action = self.actor.target_network(next_states)
         target_qs = self.critic.target_network(

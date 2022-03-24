@@ -5,19 +5,21 @@ import torch
 
 
 class PriorityExperienceReplay(object):
-    def __init__(self, buffer_size, embedding_dim, state_size, device):
+    def __init__(self, buffer_size, embedding_dim, obs_size, device):
         self.device = device
 
         self.buffer_size = buffer_size
         self.crt_idx = 0
         self.is_full = False
 
-        self.states = torch.zeros((buffer_size, 16), dtype=torch.float32).to(device)
+        self.states = torch.zeros((buffer_size, obs_size), dtype=torch.float32).to(
+            device
+        )
         self.actions = torch.zeros(
             (buffer_size, embedding_dim), dtype=torch.float32
         ).to(device)
         self.rewards = torch.zeros((buffer_size), dtype=torch.float32).to(device)
-        self.next_states = torch.zeros((buffer_size, 16), dtype=torch.float32).to(
+        self.next_states = torch.zeros((buffer_size, obs_size), dtype=torch.float32).to(
             device
         )
         self.dones = torch.zeros(buffer_size, dtype=torch.bool).to(device)
@@ -37,8 +39,8 @@ class PriorityExperienceReplay(object):
         self.next_states[self.crt_idx] = next_state
         self.dones[self.crt_idx] = done
 
-        self.sum_tree.add_data(self.max_priority ** self.alpha)
-        self.min_tree.add_data(self.max_priority ** self.alpha)
+        self.sum_tree.add_data(self.max_priority**self.alpha)
+        self.min_tree.add_data(self.max_priority**self.alpha)
 
         self.crt_idx = (self.crt_idx + 1) % self.buffer_size
         if self.crt_idx == 0:
@@ -86,9 +88,9 @@ class PriorityExperienceReplay(object):
         )
 
     def update_priority(self, priority, index):
-        self.sum_tree.update_priority(priority ** self.alpha, index)
-        self.min_tree.update_priority(priority ** self.alpha, index)
-        self.update_max_priority(priority ** self.alpha)
+        self.sum_tree.update_priority(priority**self.alpha, index)
+        self.min_tree.update_priority(priority**self.alpha, index)
+        self.update_max_priority(priority**self.alpha)
 
     def update_max_priority(self, priority):
         self.max_priority = max(self.max_priority, priority)
