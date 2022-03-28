@@ -10,7 +10,7 @@ model_train:
     actor_learning_rate: 0.0001
     critic_hidden_dim: 512
     critic_learning_rate: 0.001
-    discount_factor: 0.9
+    discount_factor: 0.5
     tau: 0.01
     learning_starts: 1000
     replay_memory_size: 1000000
@@ -21,3 +21,4 @@ model_train:
     done_count: 10
     fairness_constraints: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
     reward_threshold: 4.0
+    reward_version: paper

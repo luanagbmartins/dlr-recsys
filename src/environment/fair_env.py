@@ -17,6 +17,7 @@ class OfflineFairEnv(OfflineEnv):
         done_count,
         fairness_constraints,
         reward_threshold,
+        reward_version,
         fix_user_id=None,
         reward_model=None,
         use_only_reward_model=False,
@@ -31,6 +32,7 @@ class OfflineFairEnv(OfflineEnv):
             done_count,
             fairness_constraints,
             reward_threshold,
+            reward_version,
             fix_user_id,
             reward_model,
             use_only_reward_model,
@@ -53,35 +55,40 @@ class OfflineFairEnv(OfflineEnv):
 
         if reward:
 
-            # From the paper:
-            if reward > 0:
+            if self.reward_version == "paper":
+                # From the paper:
+                if reward > 0:
+                    fair_reward = (
+                        (
+                            self.fairness_constraints[group - 1]
+                            / np.sum(self.fairness_constraints)
+                        )
+                        - (
+                            self.group_count[group]
+                            / np.sum(list(self.group_count.values()))
+                        )
+                        + 1
+                    )
+                else:
+                    fair_reward = -1
+
+            elif self.reward_version == "adaptative":
+                # Adaptative:
+                user_intent = self.get_user_intent()
                 fair_reward = (
-                    (
-                        self.fairness_constraints[group - 1]
-                        / np.sum(self.fairness_constraints)
-                    )
-                    - (
-                        self.group_count[group]
-                        / np.sum(list(self.group_count.values()))
-                    )
-                    + 1
-                )
-            else:
-                fair_reward = -1
+                    self.fairness_constraints[group - 1]
+                    / np.sum(self.fairness_constraints)
+                ) - (self.group_count[group] / np.sum(list(self.group_count.values())))
+                fair_reward = fair_reward if user_intent <= 0.5 else reward
 
-            # # Adaptative:
-            # user_intent = self.get_user_intent()
-            # fair_reward = (
-            #     self.fairness_constraints[group - 1] / np.sum(self.fairness_constraints)
-            # ) - (self.group_count[group] / np.sum(list(self.group_count.values())))
-            # fair_reward = fair_reward if user_intent <= 0.5 else reward
-
-            # # Combining:
-            # user_intent = self.get_user_intent()
-            # fair_reward = (
-            #     self.fairness_constraints[group - 1] / np.sum(self.fairness_constraints)
-            # ) - (self.group_count[group] / np.sum(list(self.group_count.values())))
-            # fair_reward = (reward * user_intent) + (fair_reward * (1 - user_intent))
+            elif self.reward_version == "combining":
+                # Combining:
+                user_intent = self.get_user_intent()
+                fair_reward = (
+                    self.fairness_constraints[group - 1]
+                    / np.sum(self.fairness_constraints)
+                ) - (self.group_count[group] / np.sum(list(self.group_count.values())))
+                fair_reward = (reward * user_intent) + (fair_reward * (1 - user_intent))
 
         else:
             fair_reward = 1.5

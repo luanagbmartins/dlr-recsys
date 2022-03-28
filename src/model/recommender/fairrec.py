@@ -94,7 +94,7 @@ class FairRecAgent(DRRAgent):
                 torch.FloatTensor(fairness_allocation).to(
                     self.device
                 ),  # batch_size x n_groups
-                # self.user_embeddings[user_id],
+                self.user_embeddings[user_id],
             ]
         )
         return state

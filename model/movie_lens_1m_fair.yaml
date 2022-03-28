@@ -21,3 +21,4 @@ model_train:
     done_count: 10
     fairness_constraints: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
     reward_threshold: 4.0
+    reward_version: paper

@@ -35,6 +35,7 @@ class RSRL(luigi.Task):
     n_groups: int = luigi.IntParameter(default=4)
     fairness_constraints: list = luigi.ListParameter(default=[0.25, 0.25, 0.25, 0.25])
     reward_threshold: float = luigi.FloatParameter(default=4.0)
+    reward_version: str = luigi.Parameter(default="paper")
     top_k: int = luigi.IntParameter(default=10)
     done_count: int = luigi.IntParameter(default=10)
 
@@ -100,6 +101,7 @@ class RSRL(luigi.Task):
             done_count=self.done_count,
             fairness_constraints=self.fairness_constraints,
             reward_threshold=self.reward_threshold,
+            reward_version=self.reward_version,
         )
 
         print("---------- Initialize Agent")

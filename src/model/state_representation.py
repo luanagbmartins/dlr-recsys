@@ -92,13 +92,13 @@ class FairRecStateRepresentationNetwork(nn.Module):
     #     self.item_embeddings = nn.Embedding.from_pretrained(item_embeddings).to(device)
 
     def forward(self, x):
-        # user = x[3]
+        user = x[3]
         items = torch.add(x[0], x[1]).squeeze()
         ups = self.attention_layer(items)
         fs = self.act(self.fav(x[2]))
 
-        # return torch.cat((user, user * ups, ups, fs), 1)
-        return torch.cat((ups, fs), 1)
+        return torch.cat((user, ups, fs), 1)
+        # return torch.cat((ups, fs), 1)
 
 
 STATE_REPRESENTATION = dict(

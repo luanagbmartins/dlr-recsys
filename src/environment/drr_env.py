@@ -15,6 +15,7 @@ class OfflineEnv(object):
         done_count,
         fairness_constraints,
         reward_threshold,
+        reward_version,
         fix_user_id=None,
         reward_model=None,
         use_only_reward_model=False,
@@ -30,6 +31,7 @@ class OfflineEnv(object):
         self.state_size = state_size
 
         self.reward_threshold = reward_threshold
+        self.reward_version = reward_version
 
         # filter users with len_history > state_size
         self.available_users = self._generate_available_users()

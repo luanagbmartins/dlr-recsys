@@ -4,7 +4,7 @@ model_train:
     items_num: 1682
     embedding_dim: 50
     state_size: 5
-    srm_size: 2
+    srm_size: 3
     max_eps_num: 10000
     actor_hidden_dim: 512
     actor_learning_rate: 0.0001
@@ -21,3 +21,4 @@ model_train:
     done_count: 10
     fairness_constraints: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
     reward_threshold: 4.0
+    reward_version: adaptative
