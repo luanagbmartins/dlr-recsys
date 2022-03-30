@@ -77,7 +77,7 @@ class DRRAveStateRepresentationNetwork(nn.Module):
 
 class FairRecPaperStateRepresentationNetwork(nn.Module):
     def __init__(self, embedding_dim, state_size, n_groups):
-        super(FairRecStateRepresentationNetwork, self).__init__()
+        super(FairRecPaperStateRepresentationNetwork, self).__init__()
         self.embedding_dim = embedding_dim
 
         self.act = nn.ReLU()
