@@ -58,6 +58,7 @@ class OfflineFairEnv(OfflineEnv):
             if self.reward_version == "paper":
                 # From the paper:
                 if reward > 0:
+
                     fair_reward = (
                         (
                             self.fairness_constraints[group - 1]
@@ -91,7 +92,7 @@ class OfflineFairEnv(OfflineEnv):
                 fair_reward = (reward * user_intent) + (fair_reward * (1 - user_intent))
 
         else:
-            fair_reward = 1.5
+            fair_reward = -1.5
 
         return fair_reward
 
