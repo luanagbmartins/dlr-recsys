@@ -48,6 +48,11 @@ class RSRL(luigi.Task):
     dataset_path: str = luigi.Parameter()
     evaluate: bool = luigi.BoolParameter()
 
+    def __init__(self, *args, **kwargs):
+        super(RSRL, self).__init__(*args, **kwargs)
+
+        self.train_version = "{}_{}".format(self.train_version, self.reward_version)
+
     def output(self):
         return {
             "actor_model": luigi.LocalTarget(

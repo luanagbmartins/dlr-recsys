@@ -17,11 +17,15 @@ import wandb
 
 
 STATE_REPRESENTATION = dict(
-    movie_lens_100k="drr",
-    movie_lens_100k_fair="fairrec",
-    movie_lens_1m="drr",
-    movie_lens_1m_fair="fairrec",
-    trivago="drr",
+    movie_lens_100k_paper="drr_paper",
+    movie_lens_100k_fair_paper="fairrec_paper",
+    movie_lens_100k_fair_adaptative="fairrec_adaptative",
+    movie_lens_100k_fair_combining="fairrec_combining",
+    movie_lens_1m_paper="drr_paper",
+    movie_lens_1m_fair_paper="fairrec_paper",
+    movie_lens_1m_fair_adaptative="fairrec_adaptative",
+    movie_lens_1m_fair_combining="fairrec_combining",
+    trivago_paper="drr_paper",
 )
 
 
