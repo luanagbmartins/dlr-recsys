@@ -60,6 +60,7 @@ dependencies:
   - zlib=1.2.11=h166bdaf_1014
   - pip:
     - attrs==21.4.0
+    - black==22.3.0
     - charset-normalizer==2.0.12
     - click==8.1.0
     - coverage==6.3.2
@@ -78,12 +79,15 @@ dependencies:
     - lockfile==0.12.2
     - luigi==3.0.3
     - matplotlib==3.5.1
+    - mypy-extensions==0.4.3
     - numpy==1.22.3
     - packaging==21.3
     - pandas==1.4.1
+    - pathspec==0.9.0
     - pathtools==0.1.2
     - patsy==0.5.2
     - pillow==9.0.1
+    - platformdirs==2.5.1
     - plotly==4.14.3
     - plotly-express==0.4.1
     - pluggy==1.0.0
