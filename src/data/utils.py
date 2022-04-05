@@ -4,7 +4,6 @@ import math
 import luigi
 import zipfile
 import requests
-from kaggle.api.kaggle_api_extended import KaggleApi
 from tqdm import tqdm
 
 OUTPUT_PATH = os.path.join(os.getcwd(), "data/")
@@ -83,6 +82,13 @@ class DownloadDataset(luigi.Task, metaclass=abc.ABCMeta):
                     zip_ref.extractall(output_path)
 
     def download_kaggle(self, name, output_path=".", **kws):
+        try:
+            from kaggle.api.kaggle_api_extended import KaggleApi
+        except ImportError:
+            raise ImportError(
+                "Could not find kaggle.json. Please download the Kaggle API token to continue."
+            )
+
         api = KaggleApi()
         api.authenticate()
         for dataset in DATASETS[name]["download"]:
