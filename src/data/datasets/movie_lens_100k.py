@@ -155,11 +155,11 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
 
         print(users_num, items_num)
 
-        # items groups
-        z = np.random.geometric(p=0.35, size=items_num)
-        w = z % self.n_groups
-        w = [i if i > 0 else self.n_groups for i in w]
-        item_groups = {i: w[i] for i in range(items_num)}
+        # # items groups
+        # z = np.random.geometric(p=0.35, size=items_num)
+        # w = z % self.n_groups
+        # w = [i if i > 0 else self.n_groups for i in w]
+        # item_groups = {i: w[i] for i in range(items_num)}
 
         # Training setting
         train_users_num = int(users_num * 0.8)
@@ -189,5 +189,5 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
         with open(self.output()["users_history_lens"].path, "wb") as file:
             pickle.dump(users_history_lens, file)
 
-        with open(self.output()["item_groups"].path, "wb") as file:
-            pickle.dump(item_groups, file)
+        # with open(self.output()["item_groups"].path, "wb") as file:
+        #     pickle.dump(item_groups, file)
