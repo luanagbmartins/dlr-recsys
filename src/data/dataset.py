@@ -8,6 +8,7 @@ from src.data.datasets import (
     ML100kLoadAndPrepareDataset,
     ML25MLoadAndPrepareDataset,
     TrivagoLoadAndPrepareDataset,
+    FoursquareLoadAndPrepareDataset,
 )
 
 ## Available versions of the GenerateDataset subtasks
@@ -16,6 +17,7 @@ DATASETS = dict(
     movie_lens_100k=ML100kLoadAndPrepareDataset,
     movie_lens_25m=ML25MLoadAndPrepareDataset,
     trivago=TrivagoLoadAndPrepareDataset,
+    foursquare=FoursquareLoadAndPrepareDataset,
 )
 
 OUTPUT_PATH = os.path.join(os.getcwd(), "data/")

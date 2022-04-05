@@ -4,17 +4,34 @@ import math
 import luigi
 import zipfile
 import requests
+from kaggle.api.kaggle_api_extended import KaggleApi
 from tqdm import tqdm
 
 OUTPUT_PATH = os.path.join(os.getcwd(), "data/")
 DATASETS = {
-    "ml-1m": ["https://files.grouplens.org/datasets/movielens/ml-1m.zip"],
-    "ml-100k": ["https://files.grouplens.org/datasets/movielens/ml-100k.zip"],
-    "ml-25m": ["https://files.grouplens.org/datasets/movielens/ml-25m.zip"],
-    "trivago": [
-        "https://recsys2019data.trivago.com/train.csv",
-        "https://recsys2019data.trivago.com/item_metadata.csv",
-    ],
+    "ml-1m": {
+        "type": "url",
+        "download": ["https://files.grouplens.org/datasets/movielens/ml-1m.zip"],
+    },
+    "ml-100k": {
+        "type": "url",
+        "download": ["https://files.grouplens.org/datasets/movielens/ml-100k.zip"],
+    },
+    "ml-25m": {
+        "type": "url",
+        "download": ["https://files.grouplens.org/datasets/movielens/ml-25m.zip"],
+    },
+    "trivago": {
+        "type": "url",
+        "download": [
+            "https://recsys2019data.trivago.com/train.csv",
+            "https://recsys2019data.trivago.com/item_metadata.csv",
+        ],
+    },
+    "foursquare": {
+        "type": "kaggle",
+        "download": ["chetanism/foursquare-nyc-and-tokyo-checkin-dataset"],
+    },
 }
 
 
@@ -27,16 +44,18 @@ class DownloadDataset(luigi.Task, metaclass=abc.ABCMeta):
             luigi.LocalTarget(
                 os.path.join(self.output_path, self.dataset, os.path.basename(p))
             )
-            for p in DATASETS[self.dataset]
+            for p in DATASETS[self.dataset]["download"]
         ]
 
     def run(self):
-        self.load_dataset(self.dataset, output_path=self.output_path)
+        if DATASETS[self.dataset]["type"] == "url":
+            self.download_url(self.dataset, output_path=self.output_path)
+        elif DATASETS[self.dataset]["type"] == "kaggle":
+            self.download_kaggle(self.dataset, output_path=self.output_path)
 
-    def load_dataset(self, name, cache=True, output_path=".", **kws):
+    def download_url(self, name, cache=True, output_path=".", **kws):
         results = []
-        for url in DATASETS[name]:
-
+        for url in DATASETS[name]["download"]:
             output_file = os.path.join(output_path, name, os.path.basename(url))
             if not os.path.isfile(output_file) or not cache:
                 # Streaming, so we can iterate over the response.
@@ -62,3 +81,13 @@ class DownloadDataset(luigi.Task, metaclass=abc.ABCMeta):
             if output_file.endswith(".zip"):
                 with zipfile.ZipFile(output_file, "r") as zip_ref:
                     zip_ref.extractall(output_path)
+
+    def download_kaggle(self, name, output_path=".", **kws):
+        api = KaggleApi()
+        api.authenticate()
+        for dataset in DATASETS[name]["download"]:
+            api.dataset_download_files(
+                dataset,
+                path=os.path.join(output_path, name),
+                unzip=True,
+            )

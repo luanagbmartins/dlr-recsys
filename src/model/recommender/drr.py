@@ -26,6 +26,10 @@ STATE_REPRESENTATION = dict(
     movie_lens_1m_fair_adaptative="fairrec_adaptative",
     movie_lens_1m_fair_combining="fairrec_combining",
     trivago_paper="drr_paper",
+    foursquare_paper="drr_paper",
+    foursquare_fair_paper="fairrec_paper",
+    foursquare_fair_adaptative="fairrec_adaptative",
+    foursquare_fair_combining="fairrec_combining",
 )
 
 
