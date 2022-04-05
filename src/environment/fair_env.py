@@ -41,7 +41,7 @@ class OfflineFairEnv(OfflineEnv):
 
     def get_user_intent(self):
         user_intent = pd.DataFrame(
-            self.item_embeddings[list(self.correctly_recommended)]
+            self.item_embeddings[list(self.correctly_recommended)].cpu().numpy()
         )
         user_intent = cosine_similarity(user_intent, user_intent)[
             np.triu_indices(user_intent.shape[0], k=1)
@@ -54,7 +54,6 @@ class OfflineFairEnv(OfflineEnv):
     def get_fair_reward(self, group, reward):
 
         if reward:
-
             if self.reward_version == "paper":
                 # From the paper:
                 if reward > 0:
@@ -108,8 +107,8 @@ class OfflineFairEnv(OfflineEnv):
                 self.total_recommended_items += 1
 
                 _reward = self.get_reward(act)
+                _fair_reward = self.get_fair_reward(group, _reward)
                 _reward = _reward if _reward else -1.5
-                _fair_reward = self.get_fair_reward(group, self.get_reward(act))
                 rewards.append(_fair_reward)
 
                 if _reward > 0:
@@ -132,8 +131,8 @@ class OfflineFairEnv(OfflineEnv):
             self.total_recommended_items += 1
 
             _reward = self.get_reward(action)
+            _fair_reward = self.get_fair_reward(group, _reward)
             _reward = _reward if _reward else -1.5
-            _fair_reward = self.get_fair_reward(group, self.get_reward(action))
 
             if _reward > 0:
                 self.items = self.items[1:] + [action]
