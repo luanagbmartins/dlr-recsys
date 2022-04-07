@@ -91,7 +91,7 @@ class FairRecAgent(DRRAgent):
                 torch.stack(groups).to(
                     self.device
                 ),  # batch_size x n_items x embedding_dim
-                torch.FloatTensor(fairness_allocation).to(
+                torch.FloatTensor(np.array(fairness_allocation)).to(
                     self.device
                 ),  # batch_size x n_groups
                 self.user_embeddings[user_id],

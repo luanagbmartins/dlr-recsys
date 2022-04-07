@@ -35,4 +35,4 @@ class OUNoise(object):
         self.sigma = self.max_sigma - (self.max_sigma - self.min_sigma) * min(
             1.0, t / self.decay_period
         )
-        return torch.tensor([action + ou_state]).float()
+        return torch.tensor(np.array([action + ou_state])).float()

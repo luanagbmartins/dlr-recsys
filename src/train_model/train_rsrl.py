@@ -3,6 +3,10 @@ import json
 import pickle
 import luigi
 
+import torch
+import numpy as np
+import random
+
 from src.environment import OfflineEnv, OfflineFairEnv
 from src.model.recommender import DRRAgent, FairRecAgent
 
@@ -47,6 +51,7 @@ class RSRL(luigi.Task):
     load_model: bool = luigi.BoolParameter()
     dataset_path: str = luigi.Parameter()
     evaluate: bool = luigi.BoolParameter()
+    no_cuda: bool = luigi.BoolParameter(default=False)
 
     def __init__(self, *args, **kwargs):
         super(RSRL, self).__init__(*args, **kwargs)
@@ -93,9 +98,23 @@ class RSRL(luigi.Task):
 
         return dataset
 
+    def seed_all(self, seed):
+        cuda = torch.device(
+            "cuda" if torch.cuda.is_available() and not self.no_cuda else "cpu"
+        )
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if cuda:
+            torch.cuda.empty_cache()
+            torch.cuda.manual_seed(seed=seed)
+
     def train_model(self, dataset):
+        self.seed_all(0)
+        print("---------- Seeds initialized")
+
         print("---------- Prepare Env")
-        print("------------ ", self.algorithm)
+        print("---------- ", self.algorithm)
 
         env = ENV[self.algorithm](
             users_dict=dataset["train_users_dict"],
@@ -133,6 +152,7 @@ class RSRL(luigi.Task):
             n_groups=self.n_groups,
             fairness_constraints=self.fairness_constraints,
             use_reward_model=self.use_reward_model,
+            no_cuda=self.no_cuda,
         )
 
         print("---------- Start Training")

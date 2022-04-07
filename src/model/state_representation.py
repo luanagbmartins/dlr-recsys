@@ -43,25 +43,52 @@ class Attention(nn.Module):
         return torch.sum(weighted_input, 1)
 
 
-class DRRAveStateRepresentationNetwork(nn.Module):
+class DRRAvePaperStateRepresentationNetwork(nn.Module):
     def __init__(self, embedding_dim, state_size, n_groups=None):
-        super(DRRAveStateRepresentationNetwork, self).__init__()
+        super(DRRAvePaperStateRepresentationNetwork, self).__init__()
         self.embedding_dim = embedding_dim
 
-        # self.drr_ave = torch.nn.Conv1d(in_channels=state_size, out_channels=1, kernel_size=1)
-        # self.initialize()
+        self.drr_ave = torch.nn.Conv1d(
+            in_channels=state_size, out_channels=1, kernel_size=1
+        )
+        self.initialize()
 
-        self.attention_layer = Attention(embedding_dim, state_size)
-
-    # def initialize(self):
-    #     nn.init.uniform_(self.drr_ave.weight)
-    #     self.drr_ave.bias.data.zero_()
+    def initialize(self):
+        nn.init.uniform_(self.drr_ave.weight)
+        self.drr_ave.bias.data.zero_()
 
     def forward(self, x):
         user = x[0]
         item = x[1]
 
-        # drr_ave = self.drr_ave(item).squeeze(1)
+        drr_ave = self.drr_ave(item).squeeze(1)
+
+        output = torch.cat(
+            (
+                user,
+                user * drr_ave,
+                drr_ave,
+            ),
+            1,
+        )
+        return output
+
+
+class DRRAveStateRepresentationNetwork(nn.Module):
+    def __init__(self, embedding_dim, state_size, n_groups=None):
+        super(DRRAveStateRepresentationNetwork, self).__init__()
+        self.embedding_dim = embedding_dim
+
+        self.attention_layer = Attention(embedding_dim, state_size)
+
+    def initialize(self):
+        nn.init.uniform_(self.drr_ave.weight)
+        self.drr_ave.bias.data.zero_()
+
+    def forward(self, x):
+        user = x[0]
+        item = x[1]
+
         drr_ave = self.attention_layer(item)
 
         output = torch.cat(
@@ -125,7 +152,8 @@ class FairRecStateRepresentationNetwork(nn.Module):
 
 
 STATE_REPRESENTATION = dict(
-    drr_paper=DRRAveStateRepresentationNetwork,
+    drr_paper=DRRAvePaperStateRepresentationNetwork,
+    drr_attention=DRRAveStateRepresentationNetwork,
     fairrec_paper=FairRecPaperStateRepresentationNetwork,
     fairrec_combining=FairRecStateRepresentationNetwork,
     fairrec_adaptative=FairRecStateRepresentationNetwork,

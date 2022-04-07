@@ -1,7 +1,5 @@
 import os
 from tqdm import tqdm
-import time
-from operator import itemgetter
 
 import torch
 import numpy as np
@@ -18,15 +16,18 @@ import wandb
 
 STATE_REPRESENTATION = dict(
     movie_lens_100k_paper="drr_paper",
+    movie_lens_100k_attention="drr_attention",
     movie_lens_100k_fair_paper="fairrec_paper",
     movie_lens_100k_fair_adaptative="fairrec_adaptative",
     movie_lens_100k_fair_combining="fairrec_combining",
     movie_lens_1m_paper="drr_paper",
+    movie_lens_1m_attention="drr_attention",
     movie_lens_1m_fair_paper="fairrec_paper",
     movie_lens_1m_fair_adaptative="fairrec_adaptative",
     movie_lens_1m_fair_combining="fairrec_combining",
     trivago_paper="drr_paper",
     foursquare_paper="drr_paper",
+    foursquare_attention="drr_attention",
     foursquare_fair_paper="fairrec_paper",
     foursquare_fair_adaptative="fairrec_adaptative",
     foursquare_fair_combining="fairrec_combining",
@@ -248,10 +249,10 @@ class DRRAgent:
                 os.path.join(self.model_path, "critic_{}.h5".format(critic_checkpoint)),
                 os.path.join(self.model_path, "srm_{}.h5".format(srm_checkpoint)),
             )
-            print("----- Completely load weights!")
-            print("Actor checkpoint: ", actor_checkpoint)
-            print("Critic checkpoint: ", critic_checkpoint)
-            print("SRM checkpoint: ", srm_checkpoint)
+            # print("----- Completely load weights!")
+            # print("Actor checkpoint: ", actor_checkpoint)
+            # print("Critic checkpoint: ", critic_checkpoint)
+            # print("SRM checkpoint: ", srm_checkpoint)
 
         sum_precision = 0
         sum_ndcg = 0
@@ -273,6 +274,7 @@ class DRRAgent:
 
             # environment
             user_id, items_ids, done = self.env.reset()
+            self.noise.reset()
 
             while not done:
                 with torch.no_grad():
@@ -287,7 +289,7 @@ class DRRAgent:
                     ## action(ranking score)
                     action = self.actor.network(state.detach())
 
-                ## epsilon-greedy exploration
+                ## ou exploration
                 if not self.is_test:
                     action = self.noise.get_action(
                         action.detach().cpu().numpy()[0], steps
@@ -499,6 +501,143 @@ class DRRAgent:
 
         return value_loss.detach().cpu().numpy(), policy_loss.detach().cpu().numpy()
 
+    def online_evaluate(self, env, top_k=0, available_items=None, load_model=False):
+
+        if load_model:
+            # Get list of checkpoints
+            actor_checkpoint = sorted(
+                [
+                    int((f.split("_")[1]).split(".")[0])
+                    for f in os.listdir(self.model_path)
+                    if f.startswith("actor_")
+                ]
+            )[-1]
+            critic_checkpoint = sorted(
+                [
+                    int((f.split("_")[1]).split(".")[0])
+                    for f in os.listdir(self.model_path)
+                    if f.startswith("critic_")
+                ]
+            )[-1]
+            srm_checkpoint = sorted(
+                [
+                    int((f.split("_")[1]).split(".")[0])
+                    for f in os.listdir(self.model_path)
+                    if f.startswith("srm_")
+                ]
+            )[-1]
+
+            self.load_model(
+                os.path.join(self.model_path, "actor_{}.h5".format(actor_checkpoint)),
+                os.path.join(self.model_path, "critic_{}.h5".format(critic_checkpoint)),
+                os.path.join(self.model_path, "srm_{}.h5".format(srm_checkpoint)),
+            )
+
+        steps = 0
+        mean_precision = 0
+        mean_ndcg = 0
+        episode_reward = 0
+
+        critic_loss = 0
+        actor_loss = 0
+
+        list_recommended_item = []
+
+        # Environment
+        user_id, items_ids, done = env.reset()
+
+        while not done:
+            with torch.no_grad():
+                # observe current state & Find action
+                group_counts = list(self.env.group_count.values())
+                state = self.get_state(
+                    np.array([user_id]),
+                    np.array([items_ids]),
+                    np.array([group_counts]),
+                )
+
+                ## action(ranking score)
+                action = self.actor.network(state.detach())
+
+            ## Item
+            recommended_item = self.recommend_item(
+                action,
+                env.recommended_items,
+                top_k=top_k,
+                items_ids=list(available_items) if available_items else None,
+            )
+            list_recommended_item.extend(list(recommended_item))
+
+            # Calculate reward and observe new state (in env)
+            ## Step
+            next_items_ids, reward, done, info = env.step(recommended_item, top_k=top_k)
+
+            # get next_state
+            # next_state = self.get_state([user_id], [[next_items_ids]])
+            next_group_counts = list(env.group_count.values())
+
+            # experience replay
+            self.buffer.append(
+                torch.Tensor(
+                    np.concatenate(([user_id], items_ids, group_counts), axis=0)
+                ).to(self.device),
+                action,
+                torch.FloatTensor([np.sum(reward)]).to(self.device)
+                if top_k
+                else torch.FloatTensor([reward]).to(self.device),
+                torch.Tensor(
+                    np.concatenate(
+                        ([user_id], next_items_ids, next_group_counts), axis=0
+                    )
+                ).to(self.device),
+                torch.Tensor([done]).to(self.device),
+            )
+
+            if self.buffer.crt_idx > self.learning_starts or self.buffer.is_full:
+                _critic_loss, _actor_loss = self.update_model()
+                actor_loss += _actor_loss
+                critic_loss += _critic_loss
+
+            items_ids = next_items_ids
+            episode_reward += np.sum(reward) if top_k else reward
+            steps += 1
+
+            if top_k:
+                correct_list = info["precision"]
+                # ndcg
+                dcg, idcg = self.calculate_ndcg(
+                    correct_list, [1 for _ in range(len(info["precision"]))]
+                )
+                mean_ndcg += dcg / idcg
+
+                # precision
+                correct_num = top_k - correct_list.count(0)
+                mean_precision += correct_num / top_k
+            else:
+                mean_precision += info["precision"]
+
+            available_items = (
+                available_items - set(recommended_item) if available_items else None
+            )
+
+        propfair = 0
+        total_exp = np.sum(list(env.group_count.values()))
+        if total_exp > 0:
+            propfair = np.sum(
+                np.array(self.fairness_constraints)
+                * np.log(1 + np.array(list(env.group_count.values())) / total_exp)
+            )
+
+        return (
+            mean_precision / steps,
+            mean_ndcg / steps,
+            propfair,
+            episode_reward,
+            {user_id: list_recommended_item},
+            critic_loss / steps,
+            actor_loss / steps,
+        )
+
     def offline_evaluate(self, env, top_k=0, available_items=None):
 
         steps = 0
@@ -510,12 +649,18 @@ class DRRAgent:
         user_id, items_ids, done = env.reset()
 
         while not done:
-            # Observe current state and Find action
-            state = self.get_state(user_id, items_ids)
-
             with torch.no_grad():
-                ## Action(ranking score)
-                action = self.actor.network(state)
+                with torch.no_grad():
+                    # observe current state & Find action
+                    group_counts = list(self.env.group_count.values())
+                    state = self.get_state(
+                        np.array([user_id]),
+                        np.array([items_ids]),
+                        np.array([group_counts]),
+                    )
+
+                    ## action(ranking score)
+                    action = self.actor.network(state.detach())
 
             ## Item
             recommended_item = self.recommend_item(
@@ -530,7 +675,7 @@ class DRRAgent:
             next_items_ids, reward, done, info = env.step(recommended_item, top_k=top_k)
 
             if top_k:
-                correct_list = [1 if r > 0 else 0 for r in info["precision"]]
+                correct_list = info["precision"]
                 # ndcg
                 dcg, idcg = self.calculate_ndcg(
                     correct_list, [1 for _ in range(len(info["precision"]))]
