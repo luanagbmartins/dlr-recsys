@@ -13,9 +13,13 @@ class OfflineEnv(object):
         item_groups,
         state_size,
         done_count,
-        fairness_constraints,
         reward_threshold,
-        reward_version,
+        user_intent=None,
+        fairness_constraints=None,
+        reward_version=None,
+        user_intent_threshold=None,
+        items_metadata=None,
+        items_df=None,
         fix_user_id=None,
         reward_model=None,
         use_only_reward_model=False,
@@ -31,7 +35,6 @@ class OfflineEnv(object):
         self.state_size = state_size
 
         self.reward_threshold = reward_threshold
-        self.reward_version = reward_version
 
         # filter users with len_history > state_size
         self.available_users = self._generate_available_users()
@@ -54,13 +57,12 @@ class OfflineEnv(object):
 
         self.n_groups = n_groups
         self.item_groups = item_groups
-        self.groups_movies = {
+        self.groups_items = {
             i: [k for k in item_groups if item_groups[k] == i]
             for i in range(1, n_groups + 1)
         }
         self.group_count = {k: 0 for k in range(1, self.n_groups + 1)}
         self.total_recommended_items = 0
-        self.fairness_constraints = fairness_constraints
 
         self.reward_model = reward_model
         self.use_only_reward_model = use_only_reward_model

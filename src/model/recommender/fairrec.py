@@ -69,7 +69,7 @@ class FairRecAgent(DRRAgent):
         for batch_item, batch_group in zip(items_ids, group_counts):
 
             _groups = list(itemgetter(*batch_item)(self.env.item_groups))
-            groups_id = list(itemgetter(*_groups)(self.env.groups_movies))
+            groups_id = list(itemgetter(*_groups)(self.env.groups_items))
             groups.append(
                 torch.stack(
                     [torch.mean(self.get_items_emb(g), axis=0) for g in groups_id]

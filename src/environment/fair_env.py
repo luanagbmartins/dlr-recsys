@@ -13,42 +13,84 @@ class OfflineFairEnv(OfflineEnv):
         users_history_lens,
         n_groups,
         item_groups,
+        items_metadata,
+        items_df,
         state_size,
         done_count,
         fairness_constraints,
         reward_threshold,
         reward_version,
+        user_intent,
+        user_intent_threshold,
         fix_user_id=None,
         reward_model=None,
         use_only_reward_model=False,
         device="cpu",
     ):
         super().__init__(
-            users_dict,
-            users_history_lens,
-            n_groups,
-            item_groups,
-            state_size,
-            done_count,
-            fairness_constraints,
-            reward_threshold,
-            reward_version,
-            fix_user_id,
-            reward_model,
-            use_only_reward_model,
-            device,
+            users_dict=users_dict,
+            users_history_lens=users_history_lens,
+            n_groups=n_groups,
+            item_groups=item_groups,
+            state_size=state_size,
+            done_count=done_count,
+            reward_threshold=reward_threshold,
+            fix_user_id=fix_user_id,
+            reward_model=reward_model,
+            use_only_reward_model=use_only_reward_model,
+            device=device,
         )
+
+        self.reward_version = reward_version
+        self.user_intent_threshold = user_intent_threshold
+        self.fairness_constraints = fairness_constraints
+        self.user_intent = user_intent
+        self.items_metadata = items_metadata
+        self.items_df = items_df
+        self.items_df = self.items_df[["item_id", "title"]]
+
+        if self.user_intent == "item_title_emb":
+            from sentence_transformers import SentenceTransformer
+
+            self.bert = SentenceTransformer("bert-base-nli-mean-tokens")
 
     def get_user_intent(self):
-        user_intent = pd.DataFrame(
-            self.item_embeddings[list(self.correctly_recommended)].cpu().numpy()
-        )
-        user_intent = cosine_similarity(user_intent, user_intent)[
-            np.triu_indices(user_intent.shape[0], k=1)
-        ]
-        user_intent = (user_intent + 1) / 2
-        user_intent = user_intent.mean() * (1 - user_intent.std())
+        # TODO get movies emb from the items_metadata_df
 
+        if self.user_intent == "item_emb_pmf":
+            user_intent = pd.DataFrame(
+                self.item_embeddings[list(self.correctly_recommended)].cpu().numpy()
+            )
+            user_intent = cosine_similarity(user_intent, user_intent)[
+                np.triu_indices(user_intent.shape[0], k=1)
+            ]
+            user_intent = (user_intent + 1) / 2
+            user_intent = user_intent.mean() * (1 - user_intent.std())
+
+        elif self.user_intent == "item_genre_emb":
+            user_intent = self.items_metadata[
+                self.items_metadata["item_id"].isin(list(self.correctly_recommended))
+            ]
+            user_intent = user_intent.drop(["item_id"], axis=1)
+            user_intent = cosine_similarity(user_intent, user_intent)[
+                np.triu_indices(user_intent.shape[0], k=1)
+            ]
+            user_intent = (user_intent + 1) / 2
+            user_intent = user_intent.mean() * (1 - user_intent.std())
+        elif self.user_intent == "item_title_emb":
+            items_df = self.items_df[
+                self.items_df["item_id"].isin(list(self.correctly_recommended))
+            ]
+
+            user_intent = self.bert.encode(items_df["title"].tolist())
+            user_intent = cosine_similarity(user_intent, user_intent)[
+                np.triu_indices(user_intent.shape[0], k=1)
+            ]
+            user_intent = (user_intent + 1) / 2
+            user_intent = user_intent.mean() * (1 - user_intent.std())
+
+        else:
+            raise "Not valid user intent"
         return user_intent
 
     def get_fair_reward(self, group, reward):
@@ -79,7 +121,7 @@ class OfflineFairEnv(OfflineEnv):
                     self.fairness_constraints[group - 1]
                     / np.sum(self.fairness_constraints)
                 ) - (self.group_count[group] / np.sum(list(self.group_count.values())))
-                fair_reward = fair_reward if user_intent <= 0.5 else reward
+                fair_reward = fair_reward if user_intent <= 0.55 else reward
 
             elif self.reward_version == "combining":
                 # Combining:

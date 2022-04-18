@@ -6,6 +6,7 @@ import luigi
 import torch
 import numpy as np
 import random
+import pandas as pd
 
 from src.environment import OfflineEnv, OfflineFairEnv
 from src.model.recommender import DRRAgent, FairRecAgent
@@ -40,6 +41,8 @@ class RSRL(luigi.Task):
     fairness_constraints: list = luigi.ListParameter(default=[0.25, 0.25, 0.25, 0.25])
     reward_threshold: float = luigi.FloatParameter(default=4.0)
     reward_version: str = luigi.Parameter(default="paper")
+    user_intent_threshold: float = luigi.FloatParameter(default=0.5)
+    user_intent: str = luigi.Parameter(default="item_emb_pmf")
     top_k: int = luigi.IntParameter(default=10)
     done_count: int = luigi.IntParameter(default=10)
 
@@ -96,6 +99,9 @@ class RSRL(luigi.Task):
         with open(_dataset_path["item_groups"], "rb") as pkl_file:
             dataset["item_groups"] = pickle.load(pkl_file)
 
+        dataset["items_df"] = pd.read_csv(_dataset_path["items_df"])
+        dataset["items_metadata"] = pd.read_csv(_dataset_path["items_metadata"])
+
         return dataset
 
     def seed_all(self, seed):
@@ -114,18 +120,23 @@ class RSRL(luigi.Task):
         print("---------- Seeds initialized")
 
         print("---------- Prepare Env")
-        print("---------- ", self.algorithm)
+        print("---------- Algorithm ", self.algorithm)
+        print("---------- User Intent ", self.user_intent)
 
         env = ENV[self.algorithm](
             users_dict=dataset["train_users_dict"],
             users_history_lens=dataset["train_users_history_lens"],
             n_groups=self.n_groups,
             item_groups=dataset["item_groups"],
+            items_metadata=dataset["items_metadata"],
+            items_df=dataset["items_df"],
             state_size=self.state_size,
             done_count=self.done_count,
             fairness_constraints=self.fairness_constraints,
             reward_threshold=self.reward_threshold,
             reward_version=self.reward_version,
+            user_intent_threshold=self.user_intent_threshold,
+            user_intent=self.user_intent,
         )
 
         print("---------- Initialize Agent")

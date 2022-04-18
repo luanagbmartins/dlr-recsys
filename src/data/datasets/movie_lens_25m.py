@@ -24,7 +24,7 @@ class ML25MLoadAndPrepareDataset(luigi.Task):
 
     def output(self):
         return {
-            "movies_df": luigi.LocalTarget(os.path.join(self.data_dir, "movies.csv")),
+            "items_df": luigi.LocalTarget(os.path.join(self.data_dir, "movies.csv")),
             "ratings_df": luigi.LocalTarget(os.path.join(self.data_dir, "ratings.csv")),
             "train_users_dict": luigi.LocalTarget(
                 os.path.join(self.data_dir, "train_users_dict.pkl")
@@ -41,9 +41,9 @@ class ML25MLoadAndPrepareDataset(luigi.Task):
             "users_history_lens": luigi.LocalTarget(
                 os.path.join(self.data_dir, "users_history_lens.pkl")
             ),
-            # "movies_groups": luigi.LocalTarget(
-            #     os.path.join(self.data_dir, "movies_groups.pkl")
-            # ),
+            "item_groups": luigi.LocalTarget(
+                os.path.join(self.data_dir, "item_groups.pkl")
+            ),
         }
 
     def run(self):
@@ -83,15 +83,6 @@ class ML25MLoadAndPrepareDataset(luigi.Task):
         return datasets
 
     def prepareDataset(self, datasets):
-
-        # movies_groups = {
-        #     row[0]: random.randint(1, self.n_groups)
-        #     for index, row in datasets["movies"].iterrows()
-        # }
-        # with open(self.output()["movies_groups"].path, "wb") as file:
-        #     pickle.dump(movies_groups, file)
-
-        # del movies_groups
 
         print("---------- Ckpt 1")
 
@@ -168,3 +159,15 @@ class ML25MLoadAndPrepareDataset(luigi.Task):
 
         with open(self.output()["users_history_lens"].path, "wb") as file:
             pickle.dump(users_history_lens, file)
+
+        del users_history_lens
+        gc.collect()
+
+        # items groups
+        z = np.random.geometric(p=0.35, size=items_num)
+        w = z % self.n_groups
+        w = [i if i > 0 else self.n_groups for i in w]
+        item_groups = {i: w[i] for i in range(items_num)}
+
+        with open(self.output()["item_groups"].path, "wb") as file:
+            pickle.dump(item_groups, file)

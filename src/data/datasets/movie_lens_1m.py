@@ -24,6 +24,9 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
     def output(self):
         return {
             "items_df": luigi.LocalTarget(os.path.join(self.data_dir, "movies.csv")),
+            "items_metadata": luigi.LocalTarget(
+                os.path.join(self.data_dir, "items_metadata.csv")
+            ),
             "users_df": luigi.LocalTarget(os.path.join(self.data_dir, "users.csv")),
             "ratings_df": luigi.LocalTarget(os.path.join(self.data_dir, "ratings.csv")),
             "train_users_dict": luigi.LocalTarget(
@@ -72,35 +75,70 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
 
         ratings_df = pd.DataFrame(
             ratings_list,
-            columns=["user_id", "movie_id", "rating", "timestamp"],
+            columns=["user_id", "item_id", "rating", "timestamp"],
             dtype=np.uint32,
         )
 
-        movies_df = pd.DataFrame(movies_list, columns=["movie_id", "title", "genres"])
-        movies_df["movie_id"] = movies_df["movie_id"].apply(pd.to_numeric)
+        movies_df = pd.DataFrame(movies_list, columns=["item_id", "title", "genres"])
+        movies_df["item_id"] = movies_df["item_id"].apply(pd.to_numeric)
 
         users_df = pd.DataFrame(
             users_list, columns=["user_id", "gender", "age", "occupation", "zip_code"]
         )
 
         ratings_df["user_id"] = ratings_df["user_id"].astype("int")
-        ratings_df["movie_id"] = ratings_df["movie_id"].astype("int")
+        ratings_df["item_id"] = ratings_df["item_id"].astype("int")
         users_df["user_id"] = users_df["user_id"].astype("int")
-        movies_df["movie_id"] = movies_df["movie_id"].astype("int")
+        movies_df["item_id"] = movies_df["item_id"].astype("int")
 
         # Encode target labels with value between 0 and n_classes-1
         movies_encoder = preprocessing.LabelEncoder()
-        movies_encoder.fit(movies_df["movie_id"].values)
-        movies_df["movie_id"] = movies_encoder.transform(movies_df["movie_id"].values)
-        ratings_df["movie_id"] = movies_encoder.transform(ratings_df["movie_id"].values)
+        movies_encoder.fit(movies_df["item_id"].values)
+        movies_df["item_id"] = movies_encoder.transform(movies_df["item_id"].values)
+        ratings_df["item_id"] = movies_encoder.transform(ratings_df["item_id"].values)
 
         users_encoder = preprocessing.LabelEncoder()
         users_encoder.fit(users_df["user_id"].values)
         users_df["user_id"] = users_encoder.transform(users_df["user_id"].values)
         ratings_df["user_id"] = users_encoder.transform(ratings_df["user_id"].values)
 
+        # Getting series of lists by applying split operation.
+        movies_df.genres = movies_df.genres.str.split("|")
+        # Getting distinct genre types for generating columns of genre type.
+        genre_columns = list(set([j for i in movies_df["genres"].tolist() for j in i]))
+
+        for j in genre_columns:
+            movies_df[j] = 0
+        for i in range(movies_df.shape[0]):
+            for j in genre_columns:
+                if j in movies_df["genres"].iloc[i]:
+                    movies_df.loc[i, j] = 1
+
+        # # Separting movie title and year part using split function.
+        # split_values = movies_df["title"].str.split("(", n=1, expand=True)
+
+        # # setting 'movie_title' values to title part.
+        # movies_df.title = split_values[0]
+
+        # # creating 'release_year' column.
+        # movies_df["release_year"] = split_values[1]
+        # movies_df["release_year"] = movies_df.release_year.str.replace(")", "")
+
+        # dropping 'genre' columns as it has already been one hot encoded.
+        movies_df.drop("genres", axis=1, inplace=True)
+
+        items_metadata = movies_df.drop(columns=["title"])
+
+        movies_df = movies_df[["item_id", "title"]]
+
         # Save preprocessed dataframes
-        datasets = {"ratings": ratings_df, "movies": movies_df, "users": users_df}
+        datasets = {
+            "ratings": ratings_df,
+            "movies": movies_df,
+            "users": users_df,
+            "items_metadata": items_metadata,
+        }
+
         for dataset in datasets:
             datasets[dataset].to_csv(
                 os.path.join(self.data_dir, str(dataset + ".csv")),
@@ -122,11 +160,11 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
         }
         for data in ratings_df_gen:
             users_dict[data[1]["user_id"]].append(
-                (data[1]["movie_id"], data[1]["rating"])
+                (data[1]["item_id"], data[1]["rating"])
             )
             if data[1]["rating"] >= 4:
                 users_dict_for_history_len[data[1]["user_id"]].append(
-                    (data[1]["movie_id"], data[1]["rating"])
+                    (data[1]["item_id"], data[1]["rating"])
                 )
         users_history_lens = [
             len(users_dict_for_history_len[u])
@@ -134,7 +172,7 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
         ]
 
         users_num = max(datasets["ratings"]["user_id"]) + 1
-        items_num = max(datasets["ratings"]["movie_id"]) + 1
+        items_num = max(datasets["ratings"]["item_id"]) + 1
 
         print(users_num, items_num)
 

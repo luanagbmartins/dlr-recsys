@@ -559,6 +559,12 @@ class DRRAgent:
                 ## action(ranking score)
                 action = self.actor.network(state.detach())
 
+            ## ou exploration
+            if not self.is_test:
+                action = self.noise.get_action(
+                    action.detach().cpu().numpy()[0], steps
+                ).to(self.device)
+
             ## Item
             recommended_item = self.recommend_item(
                 action,
@@ -566,7 +572,9 @@ class DRRAgent:
                 top_k=top_k,
                 items_ids=list(available_items) if available_items else None,
             )
-            list_recommended_item.extend(list(recommended_item))
+            list_recommended_item.extend(
+                list([recommended_item] if not top_k else recommended_item)
+            )
 
             # Calculate reward and observe new state (in env)
             ## Step
