@@ -121,7 +121,9 @@ class OfflineFairEnv(OfflineEnv):
                     self.fairness_constraints[group - 1]
                     / np.sum(self.fairness_constraints)
                 ) - (self.group_count[group] / np.sum(list(self.group_count.values())))
-                fair_reward = fair_reward if user_intent <= 0.55 else reward
+                fair_reward = (
+                    fair_reward if user_intent <= self.user_intent_threshold else reward
+                )
 
             elif self.reward_version == "combining":
                 # Combining:
