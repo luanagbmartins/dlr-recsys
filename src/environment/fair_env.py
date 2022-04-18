@@ -49,14 +49,14 @@ class OfflineFairEnv(OfflineEnv):
         self.items_df = items_df
         self.items_df = self.items_df[["item_id", "title"]]
 
-        if self.user_intent == "item_title_emb":
-            from sentence_transformers import SentenceTransformer
+        self.bert = None
 
-            self.bert = SentenceTransformer("bert-base-nli-mean-tokens")
+        # if self.user_intent == "item_title_emb":
+        #     from sentence_transformers import SentenceTransformer
+
+        #     self.bert = SentenceTransformer("bert-base-nli-mean-tokens")
 
     def get_user_intent(self):
-        # TODO get movies emb from the items_metadata_df
-
         if self.user_intent == "item_emb_pmf":
             user_intent = pd.DataFrame(
                 self.item_embeddings[list(self.correctly_recommended)].cpu().numpy()

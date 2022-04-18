@@ -139,6 +139,11 @@ class RSRL(luigi.Task):
             user_intent=self.user_intent,
         )
 
+        if self.user_intent == "item_title_emb":
+            from sentence_transformers import SentenceTransformer
+
+            env.bert = SentenceTransformer("bert-base-nli-mean-tokens")
+
         print("---------- Initialize Agent")
         recommender = AGENT[self.algorithm](
             env=env,
