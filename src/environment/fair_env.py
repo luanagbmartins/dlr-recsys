@@ -47,7 +47,15 @@ class OfflineFairEnv(OfflineEnv):
         self.user_intent = user_intent
         self.items_metadata = items_metadata
         self.items_df = items_df
-        self.items_df = self.items_df[["item_id", "title"]]
+        # self.items_df = self.items_df[["item_id", "title"]]
+
+        self.items_metadata = self.items_metadata.set_index("item_id")
+        filter_col = [col for col in self.items_metadata]
+        self.items_metadata["genres"] = (
+            self.items_metadata[filter_col]
+            .dot(pd.Index(filter_col) + ", ")
+            .str.strip(", ")
+        )
 
         self.bert = None
 
@@ -69,20 +77,72 @@ class OfflineFairEnv(OfflineEnv):
 
         elif self.user_intent == "item_genre_emb":
             user_intent = self.items_metadata[
-                self.items_metadata["item_id"].isin(list(self.correctly_recommended))
+                self.items_metadata.index.isin(list(self.correctly_recommended))
             ]
-            user_intent = user_intent.drop(["item_id"], axis=1)
+            user_intent = user_intent.drop(columns=["item_id", "genres"], axis=1)
             user_intent = cosine_similarity(user_intent, user_intent)[
                 np.triu_indices(user_intent.shape[0], k=1)
             ]
             user_intent = (user_intent + 1) / 2
             user_intent = user_intent.mean() * (1 - user_intent.std())
+
+        elif self.user_intent == "item_genre_emb_bert":
+            _items_df = self.items_metadata[
+                self.items_metadata.index.isin(list(self.correctly_recommended))
+            ]
+            user_intent = self.bert.encode(_items_df["genres"].tolist())
+            user_intent = cosine_similarity(user_intent, user_intent)[
+                np.triu_indices(user_intent.shape[0], k=1)
+            ]
+            user_intent = (user_intent + 1) / 2
+            user_intent = user_intent.mean() * (1 - user_intent.std())
+
+        elif self.user_intent == "item_genre_date_emb":
+            _items_metadata = self.items_metadata[
+                self.items_metadata.index.isin(list(self.correctly_recommended))
+            ]
+            _items_df = self.items_df[
+                self.items_df.item_id.isin(list(self.correctly_recommended))
+            ]
+            _items_df = pd.concat([_items_df, _items_metadata], axis=1)[
+                ["release_date", "genres"]
+            ]
+            _items_df["input"] = _items_df.apply(
+                lambda x: f"{x['release_date']}, {x['genres']}", axis=1
+            )
+            user_intent = self.bert.encode(_items_df["input"].tolist())
+            user_intent = cosine_similarity(user_intent, user_intent)[
+                np.triu_indices(user_intent.shape[0], k=1)
+            ]
+            user_intent = (user_intent + 1) / 2
+            user_intent = user_intent.mean() * (1 - user_intent.std())
+
         elif self.user_intent == "item_title_emb":
-            items_df = self.items_df[
+            _items_df = self.items_df[
                 self.items_df["item_id"].isin(list(self.correctly_recommended))
             ]
 
-            user_intent = self.bert.encode(items_df["title"].tolist())
+            user_intent = self.bert.encode(_items_df["title"].tolist())
+            user_intent = cosine_similarity(user_intent, user_intent)[
+                np.triu_indices(user_intent.shape[0], k=1)
+            ]
+            user_intent = (user_intent + 1) / 2
+            user_intent = user_intent.mean() * (1 - user_intent.std())
+
+        elif self.user_intent == "item_title_genre_emb":
+            _items_df = self.items_df[
+                self.items_df["item_id"].isin(list(self.correctly_recommended))
+            ]
+
+            user_intent = self.items_metadata[
+                self.items_metadata.index.isin(list(self.correctly_recommended))
+            ]
+            user_intent = user_intent.drop(["genres"], axis=1).values
+
+            sentence_embeddings = self.bert.encode(_items_df["title"].tolist())
+
+            user_intent = np.concatenate((user_intent, sentence_embeddings), axis=1)
+
             user_intent = cosine_similarity(user_intent, user_intent)[
                 np.triu_indices(user_intent.shape[0], k=1)
             ]
@@ -121,9 +181,19 @@ class OfflineFairEnv(OfflineEnv):
                     self.fairness_constraints[group - 1]
                     / np.sum(self.fairness_constraints)
                 ) - (self.group_count[group] / np.sum(list(self.group_count.values())))
-                fair_reward = (
-                    fair_reward if user_intent <= self.user_intent_threshold else reward
-                )
+
+                if reward > 0:
+                    fair_reward = (
+                        fair_reward + 1
+                        if user_intent <= self.user_intent_threshold
+                        else reward
+                    )
+                else:
+                    fair_reward = (
+                        fair_reward
+                        if user_intent <= self.user_intent_threshold
+                        else reward
+                    )
 
             elif self.reward_version == "combining":
                 # Combining:
@@ -132,6 +202,7 @@ class OfflineFairEnv(OfflineEnv):
                     self.fairness_constraints[group - 1]
                     / np.sum(self.fairness_constraints)
                 ) - (self.group_count[group] / np.sum(list(self.group_count.values())))
+
                 fair_reward = (reward * user_intent) + (fair_reward * (1 - user_intent))
 
         else:

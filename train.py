@@ -19,6 +19,7 @@ class TrainRS(luigi.Task):
     train_version: str = luigi.Parameter()
     dataset_version: str = luigi.Parameter()
     train_id: str = luigi.Parameter(default="")
+    user_intent_threshold: float = luigi.FloatParameter(default=-1)
 
     def __init__(self, *args, **kwargs):
         super(TrainRS, self).__init__(*args, **kwargs)
@@ -53,10 +54,18 @@ class TrainRS(luigi.Task):
         print("---------- Generate Dataset")
         dataset = yield DatasetGeneration(self.dataset_version)
 
+        if self.user_intent_threshold != -1:
+            _train_config = self.train_config
+            _train_config["model_train"][
+                "user_intent_threshold"
+            ] = self.user_intent_threshold
+        else:
+            _train_config = self.train_config
+
         print("---------- Train Model")
         yield RSRL(
-            **self.train_config["model_train"],
-            algorithm=self.train_config["algorithm"],
+            **_train_config["model_train"],
+            algorithm=_train_config["algorithm"],
             output_path=self.output_path,
             train_version=self.train_version,
             use_wandb=self.use_wandb,

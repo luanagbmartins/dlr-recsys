@@ -41,7 +41,7 @@ class RSRL(luigi.Task):
     fairness_constraints: list = luigi.ListParameter(default=[0.25, 0.25, 0.25, 0.25])
     reward_threshold: float = luigi.FloatParameter(default=4.0)
     reward_version: str = luigi.Parameter(default="paper")
-    user_intent_threshold: float = luigi.FloatParameter(default=0.5)
+    user_intent_threshold: float = luigi.FloatParameter()
     user_intent: str = luigi.Parameter(default="item_emb_pmf")
     top_k: int = luigi.IntParameter(default=10)
     done_count: int = luigi.IntParameter(default=10)
@@ -121,7 +121,7 @@ class RSRL(luigi.Task):
 
         print("---------- Prepare Env")
         print("---------- Algorithm ", self.algorithm)
-        print("---------- User Intent ", self.user_intent)
+        print("---------- User Intent ", self.user_intent, self.user_intent_threshold)
 
         env = ENV[self.algorithm](
             users_dict=dataset["train_users_dict"],
@@ -139,10 +139,17 @@ class RSRL(luigi.Task):
             user_intent=self.user_intent,
         )
 
-        if self.user_intent == "item_title_emb":
+        _bert_emb = [
+            "item_title_emb",
+            "item_title_genre_emb",
+            "item_genre_emb_bert",
+            "item_genre_date_emb",
+        ]
+
+        if self.user_intent in _bert_emb:
             from sentence_transformers import SentenceTransformer
 
-            env.bert = SentenceTransformer("bert-base-nli-mean-tokens")
+            env.bert = SentenceTransformer("all-MiniLM-L6-v2")
 
         print("---------- Initialize Agent")
         recommender = AGENT[self.algorithm](
