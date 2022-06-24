@@ -1,5 +1,7 @@
+from tokenize import group
 import torch
 import numpy as np
+import time
 
 from operator import itemgetter
 
@@ -62,19 +64,29 @@ class FairRecAgent(DRRAgent):
             use_reward_model=use_reward_model,
         )
 
+        groups_id = list(self.env.groups_items.keys())
+        groups_items = list(self.env.groups_items.values())
+        self.group_emb = {}
+        for g, items in zip(groups_id, groups_items):
+            self.group_emb[g] = torch.mean(self.get_items_emb(items), axis=0)
+
     def get_state(self, user_id, items_ids, group_counts):
+        # start_time = time.time()
 
         groups = []
         fairness_allocation = []
         for batch_item, batch_group in zip(items_ids, group_counts):
 
             _groups = list(itemgetter(*batch_item)(self.env.item_groups))
-            groups_id = list(itemgetter(*_groups)(self.env.groups_items))
-            groups.append(
-                torch.stack(
-                    [torch.mean(self.get_items_emb(g), axis=0) for g in groups_id]
-                )
-            )
+            # groups_id = list(itemgetter(*_groups)(self.env.groups_items))
+
+            # groups.append(
+            #     torch.stack(
+            #         [torch.mean(self.get_items_emb(g), axis=0) for g in groups_id]
+            #     )
+            # )
+
+            groups.append(torch.stack([self.group_emb[g] for g in _groups]))
 
             total_exp = np.sum(batch_group)
             _fairness_allocation = (
@@ -97,4 +109,6 @@ class FairRecAgent(DRRAgent):
                 self.user_embeddings[user_id],
             ]
         )
+
+        # print("--- %s seconds ---" % (time.time() - start_time))
         return state

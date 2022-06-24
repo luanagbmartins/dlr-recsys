@@ -1,7 +1,7 @@
 algorithm: "fairrec"
 model_train:
-    users_num: 943
-    items_num: 1682
+    users_num: 148088
+    items_num: 5121
     embedding_dim: 100
     state_size: 5
     srm_size: 2
@@ -10,12 +10,12 @@ model_train:
     actor_learning_rate: 0.0001
     critic_hidden_dim: 512
     critic_learning_rate: 0.001
-    discount_factor: 0.5
+    discount_factor: 0.9
     tau: 0.01
     learning_starts: 1000
     replay_memory_size: 1000000
     batch_size: 64
-    embedding_network_weights: model/pmf/ml_100k_emb_100_ratio_0.800000_bs_1000_e_200_wd_0.100000_lr_0.000100_trained_pmf.pt
+    embedding_network_weights: model/pmf/yelp_pd_emb_100_ratio_0.800000_bs_100000_e_119_wd_0.100000_lr_0.000100_trained_pmf.pt
     use_reward_model: true
     n_groups: 10
     done_count: 10
@@ -23,4 +23,4 @@ model_train:
     reward_threshold: 4.0
     reward_version: paper
     user_intent_threshold: 0.5
-    user_intent:  item_emb_pmf
+    user_intent: item_emb_pmf

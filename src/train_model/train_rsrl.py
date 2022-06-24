@@ -7,6 +7,9 @@ import torch
 import numpy as np
 import random
 import pandas as pd
+from tqdm import tqdm
+import recmetrics as rm
+from random import sample
 
 from src.environment import OfflineEnv, OfflineFairEnv
 from src.model.recommender import DRRAgent, FairRecAgent
@@ -140,16 +143,20 @@ class RSRL(luigi.Task):
         )
 
         _bert_emb = [
-            "item_title_emb",
-            "item_title_genre_emb",
-            "item_genre_emb_bert",
-            "item_genre_date_emb",
+            "item_name_emb",
+            "item_name_metadata_emb",
+            "item_metadata_emb_bert",
+            "item_metadata_date_emb",
         ]
 
         if self.user_intent in _bert_emb:
             from sentence_transformers import SentenceTransformer
 
-            env.bert = SentenceTransformer("all-MiniLM-L6-v2")
+            bert = SentenceTransformer("all-MiniLM-L6-v2")
+        else:
+            bert = None
+
+        env.bert = bert
 
         print("---------- Initialize Agent")
         recommender = AGENT[self.algorithm](
@@ -192,3 +199,146 @@ class RSRL(luigi.Task):
             os.path.join(self.output_path, "buffer.pkl"),
         )
         print("---------- Finish Saving Model")
+
+        print("---------- Start Evaluation")
+
+        item_groups_df = pd.DataFrame(
+            dataset["item_groups"].items(), columns=["item_id", "group"]
+        )
+        catalog = item_groups_df.item_id.unique().tolist()
+
+        top_k = [3, 5, 10, 15]
+
+        _precision = []
+        _propfair = []
+        _ufg = []
+        _recommended_item = []
+        _random_recommended_item = []
+        for k in top_k:
+            sum_precision = 0
+            sum_propfair = 0
+            sum_reward = 0
+
+            recommended_item = []
+            random_recommended_item = []
+
+            env = ENV[self.algorithm](
+                users_dict=dataset["eval_users_dict"],
+                users_history_lens=dataset["eval_users_history_lens"],
+                n_groups=self.n_groups,
+                item_groups=dataset["item_groups"],
+                items_metadata=dataset["items_metadata"],
+                items_df=dataset["items_df"],
+                state_size=self.state_size,
+                done_count=self.done_count,
+                fairness_constraints=self.fairness_constraints,
+                reward_threshold=self.reward_threshold,
+                reward_version=self.reward_version,
+                user_intent_threshold=self.user_intent_threshold,
+                user_intent=self.user_intent,
+            )
+
+            env.bert = bert
+            available_users = env.available_users
+
+            recommender = AGENT[self.algorithm](
+                env=env,
+                users_num=self.users_num,
+                items_num=self.items_num,
+                srm_size=self.srm_size,
+                state_size=self.state_size,
+                train_version=self.train_version,
+                embedding_dim=self.embedding_dim,
+                actor_hidden_dim=self.actor_hidden_dim,
+                actor_learning_rate=self.actor_learning_rate,
+                critic_hidden_dim=self.critic_hidden_dim,
+                critic_learning_rate=self.critic_learning_rate,
+                discount_factor=self.discount_factor,
+                tau=self.tau,
+                learning_starts=self.learning_starts,
+                replay_memory_size=self.replay_memory_size,
+                batch_size=self.batch_size,
+                model_path=self.output_path,
+                embedding_network_weights_path=self.embedding_network_weights,
+                n_groups=self.n_groups,
+                fairness_constraints=self.fairness_constraints,
+                use_reward_model=self.use_reward_model,
+                no_cuda=self.no_cuda,
+            )
+
+            for user_id in tqdm(available_users):
+
+                eval_env = ENV[self.algorithm](
+                    users_dict=dataset["eval_users_dict"],
+                    users_history_lens=dataset["eval_users_history_lens"],
+                    n_groups=self.n_groups,
+                    item_groups=dataset["item_groups"],
+                    items_metadata=dataset["items_metadata"],
+                    items_df=dataset["items_df"],
+                    state_size=self.state_size,
+                    done_count=self.done_count,
+                    fairness_constraints=self.fairness_constraints,
+                    reward_threshold=self.reward_threshold,
+                    reward_version=self.reward_version,
+                    user_intent_threshold=self.user_intent_threshold,
+                    user_intent=self.user_intent,
+                )
+                eval_env.bert = bert
+
+                (
+                    precision,
+                    ndcg,
+                    propfair,
+                    reward,
+                    list_recommended_item,
+                    _,
+                    _,
+                ) = recommender.online_evaluate(
+                    top_k=False, load_model=True, env=eval_env
+                )
+
+                recommended_item.append(list_recommended_item)
+                random_recommended_item.append({user_id: sample(catalog, k)})
+
+                sum_precision += precision
+                sum_propfair += propfair
+                sum_reward += reward
+
+                del eval_env
+
+            _precision.append(sum_precision / len(dataset["eval_users_dict"]))
+            _propfair.append(sum_propfair / len(dataset["eval_users_dict"]))
+            _ufg.append(
+                (sum_propfair / len(dataset["eval_users_dict"]))
+                / (1 - (sum_precision / len(dataset["eval_users_dict"])))
+            )
+            _recommended_item.append(recommended_item)
+            _random_recommended_item.append(random_recommended_item)
+
+        feature_df = pd.DataFrame(
+            item_groups_df[["item_id"]]
+            .apply(lambda x: recommender.get_items_emb(x).cpu().numpy().tolist())[
+                "item_id"
+            ]
+            .tolist()
+        )
+
+        metrics = {}
+        for k in range(len(top_k)):
+            recs = pd.DataFrame(
+                [i.values() for i in _recommended_item[k]], columns=["sorted_actions"]
+            ).sorted_actions.values.tolist()
+
+            metrics[top_k[k]] = {
+                "precision": round(_precision[k] * 100, 4),
+                "propfair": round(_propfair[k] * 100, 4),
+                "ufg": round(_ufg[k], 4),
+                "coverage": round(rm.prediction_coverage(recs, catalog), 4),
+                "personalization": round(rm.personalization(recs) * 100, 4),
+                "intra_list_similarity": round(
+                    rm.intra_list_similarity(recs, feature_df), 4
+                ),
+            }
+
+        with open(os.path.join(self.output_path, "metrics.json"), "w") as f:
+            json.dump(metrics, f)

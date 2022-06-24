@@ -7,8 +7,8 @@ from src.data.datasets import (
     ML1MLoadAndPrepareDataset,
     ML100kLoadAndPrepareDataset,
     ML25MLoadAndPrepareDataset,
-    TrivagoLoadAndPrepareDataset,
-    FoursquareLoadAndPrepareDataset,
+    YelpLoadAndPrepareDataset,
+    YelpPDLoadAndPrepareDataset,
 )
 
 ## Available versions of the GenerateDataset subtasks
@@ -16,8 +16,8 @@ DATASETS = dict(
     movie_lens_1m=ML1MLoadAndPrepareDataset,
     movie_lens_100k=ML100kLoadAndPrepareDataset,
     movie_lens_25m=ML25MLoadAndPrepareDataset,
-    trivago=TrivagoLoadAndPrepareDataset,
-    foursquare=FoursquareLoadAndPrepareDataset,
+    yelp=YelpLoadAndPrepareDataset,
+    yelp_pd=YelpPDLoadAndPrepareDataset,
 )
 
 OUTPUT_PATH = os.path.join(os.getcwd(), "data/")

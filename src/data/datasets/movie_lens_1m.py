@@ -79,7 +79,9 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
             dtype=np.uint32,
         )
 
-        movies_df = pd.DataFrame(movies_list, columns=["item_id", "title", "genres"])
+        movies_df = pd.DataFrame(
+            movies_list, columns=["item_id", "item_name", "genres"]
+        )
         movies_df["item_id"] = movies_df["item_id"].apply(pd.to_numeric)
 
         users_df = pd.DataFrame(
@@ -114,22 +116,12 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
                 if j in movies_df["genres"].iloc[i]:
                     movies_df.loc[i, j] = 1
 
-        # # Separting movie title and year part using split function.
-        # split_values = movies_df["title"].str.split("(", n=1, expand=True)
-
-        # # setting 'movie_title' values to title part.
-        # movies_df.title = split_values[0]
-
-        # # creating 'release_year' column.
-        # movies_df["release_year"] = split_values[1]
-        # movies_df["release_year"] = movies_df.release_year.str.replace(")", "")
-
         # dropping 'genre' columns as it has already been one hot encoded.
         movies_df.drop("genres", axis=1, inplace=True)
 
-        items_metadata = movies_df.drop(columns=["title"])
+        items_metadata = movies_df.drop(columns=["item_name"])
 
-        movies_df = movies_df[["item_id", "title"]]
+        movies_df = movies_df[["item_id", "item_name"]]
 
         # Save preprocessed dataframes
         datasets = {

@@ -81,7 +81,7 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
             movies_list,
             columns=[
                 "item_id",
-                "title",
+                "item_name",
                 "release_date",
                 "video_release_date",
                 "imdb_url",
@@ -119,26 +119,16 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
         users_df["user_id"] = users_encoder.transform(users_df["user_id"].values)
         ratings_df["user_id"] = users_encoder.transform(ratings_df["user_id"].values)
 
-        # # Separting movie title and year part using split function.
-        # split_values = movies_df["title"].str.split("(", n=1, expand=True)
-
-        # # setting 'movie_title' values to title part.
-        # movies_df.title = split_values[0]
-
-        # # creating 'release_year' column.
-        # movies_df["release_year"] = split_values[1]
-        # movies_df["release_year"] = movies_df.release_year.str.replace(")", "")
-
         items_metadata = movies_df.drop(
             columns=[
-                "title",
+                "item_name",
                 "release_date",
                 "video_release_date",
                 "imdb_url",
             ]
         )
 
-        movies_df = movies_df[["item_id", "title", "release_date"]]
+        movies_df = movies_df[["item_id", "item_name", "release_date"]]
 
         # Save preprocessed dataframes
         datasets = {

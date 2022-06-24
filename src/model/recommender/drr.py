@@ -4,6 +4,8 @@ from tqdm import tqdm
 import torch
 import numpy as np
 
+import time
+
 from src.model.pmf import PMF
 from src.model.actor import Actor
 from src.model.critic import Critic
@@ -25,12 +27,16 @@ STATE_REPRESENTATION = dict(
     movie_lens_1m_fair_paper="fairrec_paper",
     movie_lens_1m_fair_adaptative="fairrec_adaptative",
     movie_lens_1m_fair_combining="fairrec_combining",
-    trivago_paper="drr_paper",
-    foursquare_paper="drr_paper",
-    foursquare_attention="drr_attention",
-    foursquare_fair_paper="fairrec_paper",
-    foursquare_fair_adaptative="fairrec_adaptative",
-    foursquare_fair_combining="fairrec_combining",
+    yelp_paper="drr_paper",
+    yelp_attention="drr_attention",
+    yelp_fair_paper="fairrec_paper",
+    yelp_fair_adaptative="fairrec_adaptative",
+    yelp_fair_combining="fairrec_combining",
+    yelp_pd_paper="drr_paper",
+    yelp_pd_attention="drr_attention",
+    yelp_pd_fair_paper="fairrec_paper",
+    yelp_pd_fair_adaptative="fairrec_adaptative",
+    yelp_pd_fair_combining="fairrec_combining",
 )
 
 
@@ -203,6 +209,7 @@ class DRRAgent:
         return items_eb
 
     def get_state(self, user_id, items_ids, group_counts=None):
+        # start_time = time.time()
 
         items_emb = self.get_items_emb(items_ids)
 
@@ -213,6 +220,8 @@ class DRRAgent:
                 items_emb.unsqueeze(0) if len(items_emb.shape) < 3 else items_emb,
             ]
         )
+
+        # print("--- %s seconds ---" % (time.time() - start_time))
 
         return state
 
@@ -329,9 +338,11 @@ class DRRAgent:
                 )
 
                 if self.buffer.crt_idx > self.learning_starts or self.buffer.is_full:
+                    # start_time = time.time()
                     _critic_loss, _actor_loss = self.update_model()
                     actor_loss += _actor_loss
                     critic_loss += _critic_loss
+                    # print("--- %s seconds ---" % (time.time() - start_time))
 
                 items_ids = next_items_ids
                 episode_reward += np.sum(reward) if top_k else reward
@@ -430,6 +441,7 @@ class DRRAgent:
             .numpy(),  # group_counts
         )
         actions = self.actor.network(states)
+
         policy_loss = self.critic.network(
             [
                 actions,
