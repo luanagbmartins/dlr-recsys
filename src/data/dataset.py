@@ -6,7 +6,6 @@ import json
 from src.data.datasets import (
     ML1MLoadAndPrepareDataset,
     ML100kLoadAndPrepareDataset,
-    ML25MLoadAndPrepareDataset,
     YelpLoadAndPrepareDataset,
     YelpPDLoadAndPrepareDataset,
 )
@@ -15,7 +14,6 @@ from src.data.datasets import (
 DATASETS = dict(
     movie_lens_1m=ML1MLoadAndPrepareDataset,
     movie_lens_100k=ML100kLoadAndPrepareDataset,
-    movie_lens_25m=ML25MLoadAndPrepareDataset,
     yelp=YelpLoadAndPrepareDataset,
     yelp_pd=YelpPDLoadAndPrepareDataset,
 )
