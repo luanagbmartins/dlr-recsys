@@ -1,21 +1,21 @@
 algorithm: "drr"
 model_train:
-    users_num: 148088
-    items_num: 5121
+    users_num: 123460
+    items_num: 2944
     embedding_dim: 100
     state_size: 5
     srm_size: 3
-    max_eps_num: 10000
-    actor_hidden_dim: 512
+    max_eps_num: 30000 
+    actor_hidden_dim: 256
     actor_learning_rate: 0.0001
-    critic_hidden_dim: 512
+    critic_hidden_dim: 256
     critic_learning_rate: 0.001
     discount_factor: 0.9
     tau: 0.01
-    learning_starts: 5000
-    replay_memory_size: 150000
+    learning_starts: 1000
+    replay_memory_size: 1000000
     batch_size: 64
-    embedding_network_weights: model/pmf/yelp_pd_emb_100_ratio_0.800000_bs_100000_e_119_wd_0.100000_lr_0.000100_trained_pmf.pt
+    embedding_network_weights: model/pmf/yelp_pd_emb_100_ratio_0.800000_bs_100000_e_236_r0.549381_wd_0.100000_lr_0.000100_trained_pmf.pt
     use_reward_model: true
     n_groups: 10
     done_count: 10

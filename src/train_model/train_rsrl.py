@@ -230,10 +230,11 @@ class RSRL(luigi.Task):
                 items_metadata=dataset["items_metadata"],
                 items_df=dataset["items_df"],
                 state_size=self.state_size,
-                done_count=self.done_count,
+                done_count=k,
                 fairness_constraints=self.fairness_constraints,
                 reward_threshold=self.reward_threshold,
                 reward_version=self.reward_version,
+                use_only_reward_model=True,
                 user_intent_threshold=self.user_intent_threshold,
                 user_intent=self.user_intent,
             )
@@ -243,6 +244,7 @@ class RSRL(luigi.Task):
 
             recommender = AGENT[self.algorithm](
                 env=env,
+                is_test=True,
                 users_num=self.users_num,
                 items_num=self.items_num,
                 srm_size=self.srm_size,
@@ -276,12 +278,16 @@ class RSRL(luigi.Task):
                     items_metadata=dataset["items_metadata"],
                     items_df=dataset["items_df"],
                     state_size=self.state_size,
-                    done_count=self.done_count,
+                    done_count=k,
                     fairness_constraints=self.fairness_constraints,
                     reward_threshold=self.reward_threshold,
                     reward_version=self.reward_version,
                     user_intent_threshold=self.user_intent_threshold,
                     user_intent=self.user_intent,
+                    use_only_reward_model=True,
+                    reward_model=recommender.reward_model,
+                    device=recommender.device,
+                    fix_user_id=user_id,
                 )
                 eval_env.bert = bert
 

@@ -37,6 +37,11 @@ STATE_REPRESENTATION = dict(
     yelp_pd_fair_paper="fairrec_paper",
     yelp_pd_fair_adaptative="fairrec_adaptative",
     yelp_pd_fair_combining="fairrec_combining",
+    yelp_fl_paper="drr_paper",
+    yelp_fl_attention="drr_attention",
+    yelp_fl_fair_paper="fairrec_paper",
+    yelp_fl_fair_adaptative="fairrec_adaptative",
+    yelp_fl_fair_combining="fairrec_combining",
 )
 
 
