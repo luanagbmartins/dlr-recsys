@@ -15,7 +15,7 @@ class TrainRS(luigi.Task):
 
     use_wandb: bool = luigi.BoolParameter()
     load_model: bool = luigi.BoolParameter()
-    evaluate: bool = luigi.BoolParameter()
+    only_evaluate: bool = luigi.BoolParameter()
     train_version: str = luigi.Parameter()
     dataset_version: str = luigi.Parameter()
     train_id: str = luigi.Parameter(default="")
@@ -72,7 +72,7 @@ class TrainRS(luigi.Task):
             use_wandb=self.use_wandb,
             load_model=self.load_model,
             dataset_path=dataset.path,
-            evaluate=self.evaluate,
+            only_evaluate=self.only_evaluate,
         )
 
     @property

@@ -11,6 +11,9 @@ from tqdm import tqdm
 import recmetrics as rm
 from random import sample
 
+import plotly.graph_objects as go
+import plotly_express as px
+
 from src.environment import OfflineEnv, OfflineFairEnv
 from src.model.recommender import DRRAgent, FairRecAgent
 
@@ -56,7 +59,7 @@ class RSRL(luigi.Task):
     use_wandb: bool = luigi.BoolParameter()
     load_model: bool = luigi.BoolParameter()
     dataset_path: str = luigi.Parameter()
-    evaluate: bool = luigi.BoolParameter()
+    only_evaluate: bool = luigi.BoolParameter(default=False)
     no_cuda: bool = luigi.BoolParameter(default=False)
 
     def __init__(self, *args, **kwargs):
@@ -73,11 +76,17 @@ class RSRL(luigi.Task):
                 os.path.join(self.output_path, "critic.h5")
             ),
             "srm_model": luigi.LocalTarget(os.path.join(self.output_path, "srm.h5")),
+            "metrics": luigi.LocalTarget(
+                os.path.join(self.output_path, "metrics.json")
+            ),
         }
 
     def run(self):
         dataset = self.load_data()
-        self.train_model(dataset)
+
+        if not self.only_evaluate:
+            self.train_model(dataset)
+        self.evaluate_model(dataset)
 
     def load_data(self):
         with open(self.dataset_path) as json_file:
@@ -140,7 +149,7 @@ class RSRL(luigi.Task):
             users_num=self.users_num,
             items_num=self.items_num,
             srm_size=self.srm_size,
-            srm_type=self.reward_version,
+            srm_type="{}_{}".format(self.algorithm, self.reward_version),
             state_size=self.state_size,
             train_version=self.train_version,
             use_wandb=self.use_wandb,
@@ -177,6 +186,7 @@ class RSRL(luigi.Task):
         )
         print("---------- Finish Saving Model")
 
+    def evaluate_model(self, dataset):
         print("---------- Start Evaluation")
 
         item_groups_df = pd.DataFrame(
@@ -191,6 +201,7 @@ class RSRL(luigi.Task):
         _ufg = []
         _recommended_item = []
         _random_recommended_item = []
+        _exposure = []
         for k in top_k:
             sum_precision = 0
             sum_propfair = 0
@@ -198,6 +209,7 @@ class RSRL(luigi.Task):
 
             recommended_item = []
             random_recommended_item = []
+            exposure = []
 
             env = ENV[self.algorithm](
                 users_dict=dataset["eval_users_dict"],
@@ -223,7 +235,7 @@ class RSRL(luigi.Task):
                 users_num=self.users_num,
                 items_num=self.items_num,
                 srm_size=self.srm_size,
-                srm_type=self.reward_version,
+                srm_type="{}_{}".format(self.algorithm, self.reward_version),
                 state_size=self.state_size,
                 train_version=self.train_version,
                 embedding_dim=self.embedding_dim,
@@ -266,24 +278,17 @@ class RSRL(luigi.Task):
                     title_emb_path=dataset["title_emb"],
                 )
 
-                (
-                    precision,
-                    _,
-                    propfair,
-                    reward,
-                    list_recommended_item,
-                    _,
-                    _,
-                ) = recommender.online_evaluate(
+                result = recommender.online_evaluate(
                     top_k=False, load_model=True, env=eval_env
                 )
 
-                recommended_item.append(list_recommended_item)
+                recommended_item.append(result["recommended_items"])
                 random_recommended_item.append({user_id: sample(catalog, k)})
+                exposure.append(result["exposure"])
 
-                sum_precision += precision
-                sum_propfair += propfair
-                sum_reward += reward
+                sum_precision += result["precision"]
+                sum_propfair += result["propfair"]
+                sum_reward += result["reward"]
 
                 del eval_env
 
@@ -295,6 +300,7 @@ class RSRL(luigi.Task):
             )
             _recommended_item.append(recommended_item)
             _random_recommended_item.append(random_recommended_item)
+            _exposure.append(exposure)
 
         feature_df = pd.DataFrame(
             item_groups_df[["item_id"]]
@@ -310,6 +316,11 @@ class RSRL(luigi.Task):
                 [i.values() for i in _recommended_item[k]], columns=["sorted_actions"]
             ).sorted_actions.values.tolist()
 
+            exposure = np.array(_exposure[k]).mean(axis=0)
+            ideal_exposure = self.fairness_constraints / np.sum(
+                self.fairness_constraints
+            )
+
             metrics[top_k[k]] = {
                 "precision": round(_precision[k] * 100, 4),
                 "propfair": round(_propfair[k] * 100, 4),
@@ -319,7 +330,40 @@ class RSRL(luigi.Task):
                 "intra_list_similarity": round(
                     rm.intra_list_similarity(recs, feature_df), 4
                 ),
+                "exposure": exposure.tolist(),
+                "ideal_exposure": ideal_exposure.tolist(),
             }
+
+            fig = go.Figure()
+            fig.add_trace(
+                go.Scatter(
+                    x=[i for i in range(1, self.n_groups + 1)],
+                    y=exposure,
+                    mode="lines+markers",
+                    name="Group Exposure",
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=[i for i in range(1, self.n_groups + 1)],
+                    y=ideal_exposure,
+                    mode="lines+markers",
+                    name="Ideal Exposure",
+                )
+            )
+            fig.update_layout(
+                title="Group Exposure vs Ideal Exposure",
+                xaxis_title="Group",
+                yaxis_title="Exposure",
+            )
+            fig.write_image(
+                os.path.join(
+                    self.output_path,
+                    "group_exposure_vs_ideal_exposure_{}.png".format(k),
+                )
+            )
 
         with open(os.path.join(self.output_path, "metrics.json"), "w") as f:
             json.dump(metrics, f)
+
+        print("---------- Finish Evaluation")

@@ -16,15 +16,6 @@ from src.model.state_representation import StateRepresentation
 import wandb
 
 
-STATE_REPRESENTATION = dict(
-    paper="drr_paper",
-    attention="drr_attention",
-    fair_paper="fairrec_paper",
-    fair_adaptative="fairrec_adaptative",
-    fair_combining="fairrec_combining",
-)
-
-
 class DRRAgent:
     def __init__(
         self,
@@ -70,6 +61,7 @@ class DRRAgent:
 
         self.embedding_dim = embedding_dim
         self.srm_size = srm_size
+        self.srm_type = srm_type
         self.actor_hidden_dim = actor_hidden_dim
         self.actor_learning_rate = actor_learning_rate
         self.critic_hidden_dim = critic_hidden_dim
@@ -106,7 +98,7 @@ class DRRAgent:
             state_size=state_size,
             embedding_dim=self.embedding_dim,
             n_groups=self.n_groups,
-            state_representation_type=STATE_REPRESENTATION[srm_type],
+            state_representation_type=self.srm_type,
             learning_rate=0.001,
             device=self.device,
         )
@@ -623,15 +615,15 @@ class DRRAgent:
                 * np.log(1 + np.array(env.get_group_count()) / total_exp)
             )
 
-        return (
-            mean_precision / steps,
-            mean_ndcg / steps,
-            propfair,
-            episode_reward,
-            {user_id: list_recommended_item},
-            critic_loss / steps,
-            actor_loss / steps,
-        )
+        return {
+            "precision": mean_precision / steps,
+            "propfair": propfair,
+            "reward": episode_reward,
+            "recommended_items": {user_id: list_recommended_item},
+            "exposure": (np.array(env.get_group_count()) / total_exp).tolist(),
+            "critic_loss": critic_loss / steps,
+            "actor_loss": actor_loss / steps,
+        }
 
     def offline_evaluate(self, env, top_k=0, available_items=None):
 

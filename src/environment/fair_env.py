@@ -296,12 +296,11 @@ class OfflineFairEnv(OfflineEnv):
                         else reward
                     )
                 else:
-                    fair_reward = -1
-                    # fair_reward = (
-                    #     fair_reward
-                    #     if user_intent <= self.user_intent_threshold
-                    #     else reward
-                    # )
+                    fair_reward = (
+                        fair_reward
+                        if user_intent <= self.user_intent_threshold
+                        else reward
+                    )
 
             elif self.reward_version == "combining":
                 # Combining:
