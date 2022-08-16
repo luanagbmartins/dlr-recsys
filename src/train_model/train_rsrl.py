@@ -125,7 +125,12 @@ class RSRL(luigi.Task):
 
         print("---------- Prepare Env")
         print("---------- Algorithm ", self.algorithm)
-        print("---------- User Intent ", self.user_intent, self.user_intent_threshold)
+        print(
+            "---------- User Intent ",
+            self.reward_version,
+            self.user_intent,
+            self.user_intent_threshold,
+        )
 
         env = ENV[self.algorithm](
             users_dict=dataset["train_users_dict"],
