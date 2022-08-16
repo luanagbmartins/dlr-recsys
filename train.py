@@ -59,6 +59,7 @@ class TrainRS(luigi.Task):
             _train_config["model_train"][
                 "user_intent_threshold"
             ] = self.user_intent_threshold
+            self.save_train_config(_train_config)
         else:
             _train_config = self.train_config
 
@@ -84,3 +85,10 @@ class TrainRS(luigi.Task):
             train_config = yaml.load(f, Loader=yaml.FullLoader)
 
         return train_config
+
+    def save_train_config(self, config):
+        path = os.path.abspath(
+            os.path.join(self.output_path, "{}.yaml".format(self.train_version))
+        )
+        with open(path, "w") as f:
+            yaml.dump(config, f)

@@ -23,4 +23,4 @@ model_train:
     reward_threshold: 4.0
     reward_version: paper
     user_intent_threshold: 0.5
-    user_intent:  item_emb_pmf
+    user_intent:  item_name_metadata_emb

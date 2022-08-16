@@ -1,7 +1,7 @@
 algorithm: "drr"
 model_train:
-    users_num: 211054
-    items_num: 23794
+    users_num: 726176
+    items_num: 20053
     embedding_dim: 100
     state_size: 5
     srm_size: 3
@@ -15,7 +15,7 @@ model_train:
     learning_starts: 5000
     replay_memory_size: 150000
     batch_size: 64
-    embedding_network_weights: model/pmf/yelp_emb_100_ratio_0.800000_bs_300000_e_228_wd_0.100000_lr_0.000100_trained_pmf.pt
+    embedding_network_weights: model/pmf/yelp_pd_emb_100_ratio_0.800000_bs_500000_e_47_r0.571058_wd_0.100000_lr_0.000100_trained_pmf.pt
     use_reward_model: true
     n_groups: 10
     done_count: 10

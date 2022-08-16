@@ -17,31 +17,11 @@ import wandb
 
 
 STATE_REPRESENTATION = dict(
-    movie_lens_100k_paper="drr_paper",
-    movie_lens_100k_attention="drr_attention",
-    movie_lens_100k_fair_paper="fairrec_paper",
-    movie_lens_100k_fair_adaptative="fairrec_adaptative",
-    movie_lens_100k_fair_combining="fairrec_combining",
-    movie_lens_1m_paper="drr_paper",
-    movie_lens_1m_attention="drr_attention",
-    movie_lens_1m_fair_paper="fairrec_paper",
-    movie_lens_1m_fair_adaptative="fairrec_adaptative",
-    movie_lens_1m_fair_combining="fairrec_combining",
-    yelp_paper="drr_paper",
-    yelp_attention="drr_attention",
-    yelp_fair_paper="fairrec_paper",
-    yelp_fair_adaptative="fairrec_adaptative",
-    yelp_fair_combining="fairrec_combining",
-    yelp_pd_paper="drr_paper",
-    yelp_pd_attention="drr_attention",
-    yelp_pd_fair_paper="fairrec_paper",
-    yelp_pd_fair_adaptative="fairrec_adaptative",
-    yelp_pd_fair_combining="fairrec_combining",
-    yelp_fl_paper="drr_paper",
-    yelp_fl_attention="drr_attention",
-    yelp_fl_fair_paper="fairrec_paper",
-    yelp_fl_fair_adaptative="fairrec_adaptative",
-    yelp_fl_fair_combining="fairrec_combining",
+    paper="drr_paper",
+    attention="drr_attention",
+    fair_paper="fairrec_paper",
+    fair_adaptative="fairrec_adaptative",
+    fair_combining="fairrec_combining",
 )
 
 
@@ -53,6 +33,7 @@ class DRRAgent:
         items_num,
         state_size,
         srm_size,
+        srm_type,
         model_path,
         embedding_network_weights_path,
         train_version,
@@ -125,7 +106,7 @@ class DRRAgent:
             state_size=state_size,
             embedding_dim=self.embedding_dim,
             n_groups=self.n_groups,
-            state_representation_type=STATE_REPRESENTATION[train_version],
+            state_representation_type=STATE_REPRESENTATION[srm_type],
             learning_rate=0.001,
             device=self.device,
         )
@@ -214,8 +195,6 @@ class DRRAgent:
         return items_eb
 
     def get_state(self, user_id, items_ids, group_counts=None):
-        # start_time = time.time()
-
         items_emb = self.get_items_emb(items_ids)
 
         ## SRM state
@@ -225,8 +204,6 @@ class DRRAgent:
                 items_emb.unsqueeze(0) if len(items_emb.shape) < 3 else items_emb,
             ]
         )
-
-        # print("--- %s seconds ---" % (time.time() - start_time))
 
         return state
 
@@ -263,10 +240,6 @@ class DRRAgent:
                 os.path.join(self.model_path, "critic_{}.h5".format(critic_checkpoint)),
                 os.path.join(self.model_path, "srm_{}.h5".format(srm_checkpoint)),
             )
-            # print("----- Completely load weights!")
-            # print("Actor checkpoint: ", actor_checkpoint)
-            # print("Critic checkpoint: ", critic_checkpoint)
-            # print("SRM checkpoint: ", srm_checkpoint)
 
         sum_precision = 0
         sum_ndcg = 0
@@ -293,7 +266,7 @@ class DRRAgent:
             while not done:
                 with torch.no_grad():
                     # observe current state & Find action
-                    group_counts = list(self.env.group_count.values())
+                    group_counts = self.env.get_group_count()
                     state = self.get_state(
                         np.array([user_id]),
                         np.array([items_ids]),
@@ -311,7 +284,7 @@ class DRRAgent:
 
                 ## item
                 recommended_item = self.recommend_item(
-                    action, self.env.recommended_items, top_k=top_k
+                    action, self.env.get_recommended_items(), top_k=top_k
                 )
                 list_recommended_item.append(recommended_item)
 
@@ -323,7 +296,7 @@ class DRRAgent:
 
                 # get next_state
                 # next_state = self.get_state([user_id], [[next_items_ids]])
-                next_group_counts = list(self.env.group_count.values())
+                next_group_counts = self.env.get_group_count()
 
                 # experience replay
                 self.buffer.append(
@@ -343,11 +316,9 @@ class DRRAgent:
                 )
 
                 if self.buffer.crt_idx > self.learning_starts or self.buffer.is_full:
-                    # start_time = time.time()
                     _critic_loss, _actor_loss = self.update_model()
                     actor_loss += _actor_loss
                     critic_loss += _critic_loss
-                    # print("--- %s seconds ---" % (time.time() - start_time))
 
                 items_ids = next_items_ids
                 episode_reward += np.sum(reward) if top_k else reward
@@ -373,14 +344,12 @@ class DRRAgent:
 
                 if done:
                     propfair = 0
-                    total_exp = np.sum(list(self.env.group_count.values()))
+                    total_exp = np.sum(self.env.get_group_count())
                     if total_exp > 0:
                         propfair = np.sum(
                             np.array(self.fairness_constraints)
                             * np.log(
-                                1
-                                + np.array(list(self.env.group_count.values()))
-                                / total_exp
+                                1 + np.array(self.env.get_group_count()) / total_exp
                             )
                         )
 
@@ -562,11 +531,12 @@ class DRRAgent:
 
         # Environment
         user_id, items_ids, done = env.reset()
+        self.noise.reset()
 
         while not done:
             with torch.no_grad():
                 # observe current state & Find action
-                group_counts = list(self.env.group_count.values())
+                group_counts = env.get_group_count()
                 state = self.get_state(
                     np.array([user_id]),
                     np.array([items_ids]),
@@ -585,7 +555,7 @@ class DRRAgent:
             ## Item
             recommended_item = self.recommend_item(
                 action,
-                env.recommended_items,
+                env.get_recommended_items(),
                 top_k=top_k,
                 items_ids=list(available_items) if available_items else None,
             )
@@ -599,7 +569,7 @@ class DRRAgent:
 
             # get next_state
             # next_state = self.get_state([user_id], [[next_items_ids]])
-            next_group_counts = list(env.group_count.values())
+            next_group_counts = env.get_group_count()
 
             # experience replay
             self.buffer.append(
@@ -646,11 +616,11 @@ class DRRAgent:
             )
 
         propfair = 0
-        total_exp = np.sum(list(env.group_count.values()))
+        total_exp = np.sum(env.get_group_count())
         if total_exp > 0:
             propfair = np.sum(
                 np.array(self.fairness_constraints)
-                * np.log(1 + np.array(list(env.group_count.values())) / total_exp)
+                * np.log(1 + np.array(env.get_group_count()) / total_exp)
             )
 
         return (
@@ -677,7 +647,7 @@ class DRRAgent:
             with torch.no_grad():
                 with torch.no_grad():
                     # observe current state & Find action
-                    group_counts = list(self.env.group_count.values())
+                    group_counts = env.get_group_count()
                     state = self.get_state(
                         np.array([user_id]),
                         np.array([items_ids]),
@@ -690,7 +660,7 @@ class DRRAgent:
             ## Item
             recommended_item = self.recommend_item(
                 action,
-                env.recommended_items,
+                env.get_recommended_items(),
                 top_k=top_k,
                 items_ids=list(available_items),
             )

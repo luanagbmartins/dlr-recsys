@@ -8,7 +8,8 @@ from src.data.datasets import (
     ML100kLoadAndPrepareDataset,
     YelpLoadAndPrepareDataset,
     YelpPDLoadAndPrepareDataset,
-    YelpFLLoadAndPrepareDataset,
+    YelpTOLoadAndPrepareDataset,
+    YahooLoadAndPrepareDataset,
 )
 
 ## Available versions of the GenerateDataset subtasks
@@ -17,7 +18,8 @@ DATASETS = dict(
     movie_lens_100k=ML100kLoadAndPrepareDataset,
     yelp=YelpLoadAndPrepareDataset,
     yelp_pd=YelpPDLoadAndPrepareDataset,
-    yelp_fl=YelpFLLoadAndPrepareDataset,
+    yelp_to=YelpTOLoadAndPrepareDataset,
+    yahoo=YahooLoadAndPrepareDataset,
 )
 
 OUTPUT_PATH = os.path.join(os.getcwd(), "data/")

@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import random
 from sklearn import preprocessing
+from sentence_transformers import SentenceTransformer
 
 
 from ..utils import DownloadDataset
@@ -27,6 +28,9 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
             "items_df": luigi.LocalTarget(os.path.join(self.data_dir, "movies.csv")),
             "items_metadata": luigi.LocalTarget(
                 os.path.join(self.data_dir, "items_metadata.csv")
+            ),
+            "title_emb": luigi.LocalTarget(
+                os.path.join(self.data_dir, "title_emb.csv")
             ),
             "users_df": luigi.LocalTarget(os.path.join(self.data_dir, "users.csv")),
             "ratings_df": luigi.LocalTarget(os.path.join(self.data_dir, "ratings.csv")),
@@ -128,7 +132,14 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
             ]
         )
 
+        filter_col = items_metadata.columns[1:]
+        items_metadata["metadata"] = items_metadata[filter_col].values.tolist()
+
         movies_df = movies_df[["item_id", "item_name", "release_date"]]
+
+        bert = SentenceTransformer("all-MiniLM-L12-v1")
+        title_emb = bert.encode(movies_df["item_name"].tolist())
+        title_emb = pd.DataFrame(title_emb.tolist())
 
         # Save preprocessed dataframes
         datasets = {
@@ -136,6 +147,7 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
             "movies": movies_df,
             "users": users_df,
             "items_metadata": items_metadata,
+            "title_emb": title_emb,
         }
         for dataset in datasets:
             datasets[dataset].to_csv(
@@ -174,11 +186,11 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
 
         print(users_num, items_num)
 
-        # # items groups
-        # z = np.random.geometric(p=0.35, size=items_num)
-        # w = z % self.n_groups
-        # w = [i if i > 0 else self.n_groups for i in w]
-        # item_groups = {i: w[i] for i in range(items_num)}
+        # items groups
+        z = np.random.geometric(p=0.35, size=items_num)
+        w = z % self.n_groups
+        w = [i if i > 0 else self.n_groups for i in w]
+        item_groups = {i: w[i] for i in range(items_num)}
 
         # Training setting
         train_users_num = int(users_num * 0.8)
@@ -208,5 +220,5 @@ class ML100kLoadAndPrepareDataset(luigi.Task):
         with open(self.output()["users_history_lens"].path, "wb") as file:
             pickle.dump(users_history_lens, file)
 
-        # with open(self.output()["item_groups"].path, "wb") as file:
-        #     pickle.dump(item_groups, file)
+        with open(self.output()["item_groups"].path, "wb") as file:
+            pickle.dump(item_groups, file)

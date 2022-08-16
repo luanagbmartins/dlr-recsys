@@ -87,23 +87,15 @@ class RSRL(luigi.Task):
         with open(_dataset_path["train_users_dict"], "rb") as pkl_file:
             dataset["train_users_dict"] = pickle.load(pkl_file)
 
-        with open(_dataset_path["train_users_history_lens"], "rb") as pkl_file:
-            dataset["train_users_history_lens"] = pickle.load(pkl_file)
-
         with open(_dataset_path["eval_users_dict"], "rb") as pkl_file:
             dataset["eval_users_dict"] = pickle.load(pkl_file)
-
-        with open(_dataset_path["eval_users_history_lens"], "rb") as pkl_file:
-            dataset["eval_users_history_lens"] = pickle.load(pkl_file)
-
-        with open(_dataset_path["users_history_lens"], "rb") as pkl_file:
-            dataset["users_history_lens"] = pickle.load(pkl_file)
 
         with open(_dataset_path["item_groups"], "rb") as pkl_file:
             dataset["item_groups"] = pickle.load(pkl_file)
 
         dataset["items_df"] = pd.read_csv(_dataset_path["items_df"])
         dataset["items_metadata"] = pd.read_csv(_dataset_path["items_metadata"])
+        dataset["title_emb"] = _dataset_path["title_emb"]
 
         return dataset
 
@@ -128,7 +120,6 @@ class RSRL(luigi.Task):
 
         env = ENV[self.algorithm](
             users_dict=dataset["train_users_dict"],
-            users_history_lens=dataset["train_users_history_lens"],
             n_groups=self.n_groups,
             item_groups=dataset["item_groups"],
             items_metadata=dataset["items_metadata"],
@@ -140,23 +131,8 @@ class RSRL(luigi.Task):
             reward_version=self.reward_version,
             user_intent_threshold=self.user_intent_threshold,
             user_intent=self.user_intent,
+            title_emb_path=dataset["title_emb"],
         )
-
-        _bert_emb = [
-            "item_name_emb",
-            "item_name_metadata_emb",
-            "item_metadata_emb_bert",
-            "item_metadata_date_emb",
-        ]
-
-        if self.user_intent in _bert_emb:
-            from sentence_transformers import SentenceTransformer
-
-            bert = SentenceTransformer("all-MiniLM-L6-v2")
-        else:
-            bert = None
-
-        env.bert = bert
 
         print("---------- Initialize Agent")
         recommender = AGENT[self.algorithm](
@@ -164,6 +140,7 @@ class RSRL(luigi.Task):
             users_num=self.users_num,
             items_num=self.items_num,
             srm_size=self.srm_size,
+            srm_type=self.reward_version,
             state_size=self.state_size,
             train_version=self.train_version,
             use_wandb=self.use_wandb,
@@ -224,7 +201,6 @@ class RSRL(luigi.Task):
 
             env = ENV[self.algorithm](
                 users_dict=dataset["eval_users_dict"],
-                users_history_lens=dataset["eval_users_history_lens"],
                 n_groups=self.n_groups,
                 item_groups=dataset["item_groups"],
                 items_metadata=dataset["items_metadata"],
@@ -237,9 +213,8 @@ class RSRL(luigi.Task):
                 use_only_reward_model=True,
                 user_intent_threshold=self.user_intent_threshold,
                 user_intent=self.user_intent,
+                title_emb_path=dataset["title_emb"],
             )
-
-            env.bert = bert
             available_users = env.available_users
 
             recommender = AGENT[self.algorithm](
@@ -248,6 +223,7 @@ class RSRL(luigi.Task):
                 users_num=self.users_num,
                 items_num=self.items_num,
                 srm_size=self.srm_size,
+                srm_type=self.reward_version,
                 state_size=self.state_size,
                 train_version=self.train_version,
                 embedding_dim=self.embedding_dim,
@@ -272,7 +248,6 @@ class RSRL(luigi.Task):
 
                 eval_env = ENV[self.algorithm](
                     users_dict=dataset["eval_users_dict"],
-                    users_history_lens=dataset["eval_users_history_lens"],
                     n_groups=self.n_groups,
                     item_groups=dataset["item_groups"],
                     items_metadata=dataset["items_metadata"],
@@ -288,12 +263,12 @@ class RSRL(luigi.Task):
                     reward_model=recommender.reward_model,
                     device=recommender.device,
                     fix_user_id=user_id,
+                    title_emb_path=dataset["title_emb"],
                 )
-                eval_env.bert = bert
 
                 (
                     precision,
-                    ndcg,
+                    _,
                     propfair,
                     reward,
                     list_recommended_item,
