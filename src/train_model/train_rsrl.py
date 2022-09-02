@@ -16,6 +16,7 @@ import plotly_express as px
 
 from src.environment import OfflineEnv, OfflineFairEnv
 from src.model.recommender import DRRAgent, FairRecAgent
+from src.recsys_fair_metrics.recsys_fair import RecsysFair
 
 AGENT = dict(drr=DRRAgent, fairrec=FairRecAgent)
 ENV = dict(drr=OfflineEnv, fairrec=OfflineFairEnv)
@@ -199,7 +200,7 @@ class RSRL(luigi.Task):
         )
         catalog = item_groups_df.item_id.unique().tolist()
 
-        top_k = [3, 5, 10, 15]
+        top_k = [5, 10]
 
         _precision = []
         _propfair = []
@@ -319,7 +320,7 @@ class RSRL(luigi.Task):
         for k in range(len(top_k)):
             recs = pd.DataFrame(
                 [i.values() for i in _recommended_item[k]], columns=["sorted_actions"]
-            ).sorted_actions.values.tolist()
+            )
 
             exposure = np.array(_exposure[k]).mean(axis=0)
             ideal_exposure = self.fairness_constraints / np.sum(
@@ -330,10 +331,20 @@ class RSRL(luigi.Task):
                 "precision": round(_precision[k] * 100, 4),
                 "propfair": round(_propfair[k] * 100, 4),
                 "ufg": round(_ufg[k], 4),
-                "coverage": round(rm.prediction_coverage(recs, catalog), 4),
-                "personalization": round(rm.personalization(recs) * 100, 4),
+                "coverage": round(
+                    rm.prediction_coverage(
+                        recs.sorted_actions.values.tolist(), catalog
+                    ),
+                    4,
+                ),
+                "personalization": round(
+                    rm.personalization(recs.sorted_actions.values.tolist()) * 100, 4
+                ),
                 "intra_list_similarity": round(
-                    rm.intra_list_similarity(recs, feature_df), 4
+                    rm.intra_list_similarity(
+                        recs.sorted_actions.values.tolist(), feature_df
+                    ),
+                    4,
                 ),
                 "exposure": exposure.tolist(),
                 "ideal_exposure": ideal_exposure.tolist(),
@@ -366,6 +377,44 @@ class RSRL(luigi.Task):
                     self.output_path,
                     "group_exposure_vs_ideal_exposure_{}.png".format(k),
                 )
+            )
+
+            recs["user_id"] = [list(i.keys())[0] for i in _recommended_item[k]]
+            _item_metadata = pd.DataFrame(
+                dataset["item_groups"].items(), columns=["item_id", "group"]
+            )
+            recsys_fair = RecsysFair(
+                df=recs,
+                supp_metadata=_item_metadata,
+                user_column="user_id",
+                item_column="item_id",
+                reclist_column="sorted_actions",
+            )
+
+            fair_column = "group"
+            ex = recsys_fair.exposure(fair_column, top_k[k])
+
+            fig = ex.show(kind="per_group_norm", column=fair_column)
+            fig.write_image(
+                os.path.join(
+                    self.output_path, "exposure_per_group_k{}.png".format(top_k[k])
+                )
+            )
+
+            fig = ex.show(kind="per_rank_pos", column=fair_column)
+            fig.write_image(
+                os.path.join(
+                    self.output_path, "exposure_per_rank_k{}.png".format(top_k[k])
+                )
+            )
+
+            recs.to_csv(
+                os.path.join(
+                    self.output_path, "recommended_item_k{}.csv".format(top_k[k])
+                )
+            )
+            _item_metadata.to_csv(
+                os.path.join(self.output_path, "supp_metadata_k{}.csv".format(top_k[k]))
             )
 
         with open(os.path.join(self.output_path, "metrics.json"), "w") as f:
