@@ -85,9 +85,18 @@ class RSRL(luigi.Task):
     def run(self):
         dataset = self.load_data()
 
-        if not self.only_evaluate:
+        if self.only_evaluate:
+            with open(os.path.join(self.output(), "item_groups.pkl"), "rb") as pkl_file:
+                item_groups = pickle.load(pkl_file)
+
+            self.evaluate_model(dataset, item_groups)
+
+        else:
             self.train_model(dataset)
-        self.evaluate_model(dataset)
+            self.evaluate_model(dataset)
+
+            with open(os.path.join(self.output(), "item_groups.pkl"), "wb") as file:
+                pickle.dump(dataset["item_groups"], file)
 
     def load_data(self):
         with open(self.dataset_path) as json_file:
@@ -192,8 +201,10 @@ class RSRL(luigi.Task):
         )
         print("---------- Finish Saving Model")
 
-    def evaluate_model(self, dataset):
+    def evaluate_model(self, dataset, item_groups=None):
         print("---------- Start Evaluation")
+
+        item_groups = item_groups if item_groups else dataset["item_groups"]
 
         item_groups_df = pd.DataFrame(
             dataset["item_groups"].items(), columns=["item_id", "group"]
@@ -380,12 +391,9 @@ class RSRL(luigi.Task):
             )
 
             recs["user_id"] = [list(i.keys())[0] for i in _recommended_item[k]]
-            _item_metadata = pd.DataFrame(
-                dataset["item_groups"].items(), columns=["item_id", "group"]
-            )
             recsys_fair = RecsysFair(
                 df=recs,
-                supp_metadata=_item_metadata,
+                supp_metadata=item_groups_df,
                 user_column="user_id",
                 item_column="item_id",
                 reclist_column="sorted_actions",
@@ -413,7 +421,7 @@ class RSRL(luigi.Task):
                     self.output_path, "recommended_item_k{}.csv".format(top_k[k])
                 )
             )
-            _item_metadata.to_csv(
+            item_groups_df.to_csv(
                 os.path.join(self.output_path, "supp_metadata_k{}.csv".format(top_k[k]))
             )
 
