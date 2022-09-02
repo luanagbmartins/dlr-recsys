@@ -20,6 +20,7 @@ class TrainRS(luigi.Task):
     dataset_version: str = luigi.Parameter()
     train_id: str = luigi.Parameter(default="")
     user_intent_threshold: float = luigi.FloatParameter(default=-1)
+    reward_version: str = luigi.FloatParameter(default="")
 
     def __init__(self, *args, **kwargs):
         super(TrainRS, self).__init__(*args, **kwargs)
@@ -59,6 +60,13 @@ class TrainRS(luigi.Task):
             _train_config["model_train"][
                 "user_intent_threshold"
             ] = self.user_intent_threshold
+            self.save_train_config(_train_config)
+        else:
+            _train_config = self.train_config
+
+        if len(self.reward_version) > 0:
+            _train_config = self.train_config
+            _train_config["model_train"]["reward_version"] = self.reward_version
             self.save_train_config(_train_config)
         else:
             _train_config = self.train_config
