@@ -1,3 +1,4 @@
+from email.policy import default
 import os
 import json
 import pickle
@@ -52,6 +53,8 @@ class RSRL(luigi.Task):
     user_intent: str = luigi.Parameter(default="item_emb_pmf")
     top_k: int = luigi.IntParameter(default=10)
     done_count: int = luigi.IntParameter(default=10)
+    use_context_embedding: bool = luigi.BoolParameter(default=False)
+    srm_version: str = luigi.Parameter(default="")
 
     embedding_network_weights: str = luigi.Parameter(default="")
     use_reward_model: bool = luigi.BoolParameter(default=True)
@@ -86,17 +89,19 @@ class RSRL(luigi.Task):
         dataset = self.load_data()
 
         if self.only_evaluate:
-            with open(os.path.join(self.output(), "item_groups.pkl"), "rb") as pkl_file:
+            with open(
+                os.path.join(self.output_path, "item_groups.pkl"), "rb"
+            ) as pkl_file:
                 item_groups = pickle.load(pkl_file)
 
             self.evaluate_model(dataset, item_groups)
 
         else:
+            with open(os.path.join(self.output_path, "item_groups.pkl"), "wb") as file:
+                pickle.dump(dataset["item_groups"], file)
+
             self.train_model(dataset)
             self.evaluate_model(dataset)
-
-            with open(os.path.join(self.output(), "item_groups.pkl"), "wb") as file:
-                pickle.dump(dataset["item_groups"], file)
 
     def load_data(self):
         with open(self.dataset_path) as json_file:
@@ -133,13 +138,17 @@ class RSRL(luigi.Task):
         self.seed_all(0)
         print("---------- Seeds initialized")
 
-        print("---------- Prepare Env")
         print("---------- Algorithm ", self.algorithm)
         print(
             "---------- User Intent ",
             self.reward_version,
             self.user_intent,
             self.user_intent_threshold,
+        )
+
+        print(
+            "---------- SRM version ",
+            self.srm_version,
         )
 
         env = ENV[self.algorithm](
@@ -164,7 +173,7 @@ class RSRL(luigi.Task):
             users_num=self.users_num,
             items_num=self.items_num,
             srm_size=self.srm_size,
-            srm_type="{}_{}".format(self.algorithm, self.reward_version),
+            srm_type="{}_{}".format(self.algorithm, self.srm_version),
             state_size=self.state_size,
             train_version=self.train_version,
             use_wandb=self.use_wandb,
@@ -184,6 +193,7 @@ class RSRL(luigi.Task):
             fairness_constraints=self.fairness_constraints,
             use_reward_model=self.use_reward_model,
             no_cuda=self.no_cuda,
+            use_context_embedding=self.use_context_embedding,
         )
 
         print("---------- Start Training")
@@ -252,7 +262,7 @@ class RSRL(luigi.Task):
                 users_num=self.users_num,
                 items_num=self.items_num,
                 srm_size=self.srm_size,
-                srm_type="{}_{}".format(self.algorithm, self.reward_version),
+                srm_type="{}_{}".format(self.algorithm, self.srm_version),
                 state_size=self.state_size,
                 train_version=self.train_version,
                 embedding_dim=self.embedding_dim,
@@ -271,6 +281,7 @@ class RSRL(luigi.Task):
                 fairness_constraints=self.fairness_constraints,
                 use_reward_model=self.use_reward_model,
                 no_cuda=self.no_cuda,
+                use_context_embedding=self.use_context_embedding,
             )
 
             for user_id in tqdm(available_users):
@@ -363,10 +374,9 @@ class RSRL(luigi.Task):
 
             fig = go.Figure()
             fig.add_trace(
-                go.Scatter(
+                go.Bar(
                     x=[i for i in range(1, self.n_groups + 1)],
                     y=exposure,
-                    mode="lines+markers",
                     name="Group Exposure",
                 )
             )

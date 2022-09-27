@@ -36,6 +36,7 @@ class FairRecAgent(DRRAgent):
         fairness_constraints=[0.25, 0.25, 0.25, 0.25],
         no_cuda=False,
         use_reward_model=True,
+        use_context_embedding=False,
     ):
 
         super().__init__(
@@ -64,6 +65,7 @@ class FairRecAgent(DRRAgent):
             fairness_constraints=fairness_constraints,
             no_cuda=no_cuda,
             use_reward_model=use_reward_model,
+            use_context_embedding=use_context_embedding,
         )
 
         groups_id = list(self.env.groups_items.keys())
@@ -88,6 +90,14 @@ class FairRecAgent(DRRAgent):
             )
             fairness_allocation.append(_fairness_allocation)
 
+        context_emb = (
+            torch.from_numpy(self.context_emb.get_embedding(items_ids.tolist())).to(
+                self.device
+            )
+            if self.context_emb
+            else None
+        )
+
         ## SRM state
         state = self.srm.network(
             [
@@ -99,6 +109,7 @@ class FairRecAgent(DRRAgent):
                     self.device
                 ),  # batch_size x n_groups
                 self.user_embeddings[user_id],
+                context_emb,
             ]
         )
 

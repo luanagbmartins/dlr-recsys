@@ -4,8 +4,6 @@ from tqdm import tqdm
 import torch
 import numpy as np
 
-import time
-
 from src.model.pmf import PMF
 from src.model.actor import Actor
 from src.model.critic import Critic
@@ -44,6 +42,7 @@ class DRRAgent:
         fairness_constraints=[0.25, 0.25, 0.25, 0.25],
         no_cuda=False,
         use_reward_model=True,
+        use_context_embedding=False,
     ):
         # no_cuda = True
         self.device = torch.device(
@@ -122,6 +121,19 @@ class DRRAgent:
             self.env.item_embeddings = self.item_embeddings
             self.env.device = self.device
 
+        print("----- Context Embedding: ", use_context_embedding)
+        self.context_emb = None
+        if use_context_embedding:
+            from context_embedding.recommenders import ContextRecommender
+            from context_embedding.embedders import ContextEncoder_v1
+
+            self.context_emb = ContextRecommender(
+                model_class=ContextEncoder_v1,
+                model_folder="context_embedding/movielens_runs/ContextEmbv1_5_512_Att4_Triplet_Cosine_e100_d1",
+                data_folder="context_embedding/ml-100k",
+                item_data_file_name="item_data_v1.csv",
+            )
+
         self.buffer = PriorityExperienceReplay(
             buffer_size=self.replay_memory_size,
             embedding_dim=self.embedding_dim,
@@ -189,11 +201,20 @@ class DRRAgent:
     def get_state(self, user_id, items_ids, group_counts=None):
         items_emb = self.get_items_emb(items_ids)
 
+        context_emb = (
+            torch.from_numpy(self.context_emb.get_embedding(items_ids.tolist())).to(
+                self.device
+            )
+            if self.context_emb
+            else None
+        )
+
         ## SRM state
         state = self.srm.network(
             [
                 self.user_embeddings[user_id],
                 items_emb.unsqueeze(0) if len(items_emb.shape) < 3 else items_emb,
+                context_emb,
             ]
         )
 
@@ -292,18 +313,23 @@ class DRRAgent:
 
                 # experience replay
                 self.buffer.append(
+                    # state
                     torch.Tensor(
                         np.concatenate(([user_id], items_ids, group_counts), axis=0)
                     ).to(self.device),
+                    # action
                     action,
+                    # reward
                     torch.FloatTensor([np.sum(reward)]).to(self.device)
                     if top_k
                     else torch.FloatTensor([reward]).to(self.device),
+                    # next_state
                     torch.Tensor(
                         np.concatenate(
                             ([user_id], next_items_ids, next_group_counts), axis=0
                         )
                     ).to(self.device),
+                    # done
                     torch.Tensor([done]).to(self.device),
                 )
 
@@ -479,9 +505,10 @@ class DRRAgent:
 
         return value_loss.detach().cpu().numpy(), policy_loss.detach().cpu().numpy()
 
-    def online_evaluate(self, env, top_k=0, available_items=None, load_model=False):
+    def online_evaluate(self, env, top_k=False, available_items=None, load_model=False):
 
         if load_model:
+
             # Get list of checkpoints
             actor_checkpoint = sorted(
                 [

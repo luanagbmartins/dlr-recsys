@@ -81,10 +81,6 @@ class DRRAveStateRepresentationNetwork(nn.Module):
 
         self.attention_layer = Attention(embedding_dim, state_size)
 
-    def initialize(self):
-        nn.init.uniform_(self.drr_ave.weight)
-        self.drr_ave.bias.data.zero_()
-
     def forward(self, x):
         user = x[0]
         item = x[1]
@@ -102,6 +98,37 @@ class DRRAveStateRepresentationNetwork(nn.Module):
         return output
 
 
+class DRRAveContextStateRepresentationNetwork(nn.Module):
+    def __init__(self, embedding_dim, state_size, n_groups=None):
+        super(DRRAveContextStateRepresentationNetwork, self).__init__()
+        self.embedding_dim = embedding_dim
+
+        self.act = nn.ReLU()
+        self.fav = nn.Linear(512, embedding_dim)
+        self.attention_layer = Attention(embedding_dim, state_size)
+        self.initialize()
+
+    def initialize(self):
+        nn.init.uniform_(self.fav.weight)
+        self.fav.bias.data.zero_()
+
+    def forward(self, x):
+        user = x[0]
+        item = x[1]
+        context = x[2]
+
+        ce = self.act(self.fav(context))
+        drr_ave = self.attention_layer(item)
+        drr_ave = drr_ave * ce
+        # drr_ce = ce
+
+        output = torch.cat(
+            (user, user * drr_ave, drr_ave),
+            1,
+        )
+        return output
+
+
 class FairRecPaperStateRepresentationNetwork(nn.Module):
     def __init__(self, embedding_dim, state_size, n_groups):
         super(FairRecPaperStateRepresentationNetwork, self).__init__()
@@ -110,20 +137,47 @@ class FairRecPaperStateRepresentationNetwork(nn.Module):
         self.act = nn.ReLU()
         self.fav = nn.Linear(n_groups, embedding_dim)
         self.attention_layer = Attention(embedding_dim, state_size)
+        self.initialize()
 
     def initialize(self):
         nn.init.uniform_(self.fav.weight)
         self.fav.bias.data.zero_()
 
-    # def load_weights(self, user_embeddings, item_embeddings, device):
-    #     self.item_embeddings = nn.Embedding.from_pretrained(item_embeddings).to(device)
+    def forward(self, x):
+        items = torch.add(x[0], x[1]).squeeze()
+        fairness_allocation = x[2]
+
+        ups = self.attention_layer(items)
+        fs = self.act(self.fav(fairness_allocation))
+
+        return torch.cat((ups, fs), 1)
+
+
+class FairRecContextStateRepresentationNetwork(nn.Module):
+    def __init__(self, embedding_dim, state_size, n_groups):
+        super(FairRecContextStateRepresentationNetwork, self).__init__()
+        self.embedding_dim = embedding_dim
+
+        self.act = nn.ReLU()
+        self.fav = nn.Linear(n_groups, embedding_dim)
+        self.attention_layer = Attention(embedding_dim, state_size)
+        self.ce = nn.Linear(512, embedding_dim)
+        self.initialize()
+
+    def initialize(self):
+        nn.init.uniform_(self.fav.weight)
+        self.fav.bias.data.zero_()
+
+        nn.init.uniform_(self.ce.weight)
+        self.ce.bias.data.zero_()
 
     def forward(self, x):
         items = torch.add(x[0], x[1]).squeeze()
         ups = self.attention_layer(items)
         fs = self.act(self.fav(x[2]))
+        cs = self.act(self.ce(x[4]))
 
-        return torch.cat((ups, fs), 1)
+        return torch.cat((ups, fs, cs), 1)
 
 
 class FairRecStateRepresentationNetwork(nn.Module):
@@ -134,19 +188,19 @@ class FairRecStateRepresentationNetwork(nn.Module):
         self.act = nn.ReLU()
         self.fav = nn.Linear(n_groups, embedding_dim)
         self.attention_layer = Attention(embedding_dim, state_size)
+        self.initialize()
 
     def initialize(self):
         nn.init.uniform_(self.fav.weight)
         self.fav.bias.data.zero_()
 
-    # def load_weights(self, user_embeddings, item_embeddings, device):
-    #     self.item_embeddings = nn.Embedding.from_pretrained(item_embeddings).to(device)
-
     def forward(self, x):
         user = x[3]
         items = torch.add(x[0], x[1]).squeeze()
+        fairness_allocation = x[2]
+
         ups = self.attention_layer(items)
-        fs = self.act(self.fav(x[2]))
+        fs = self.act(self.fav(fairness_allocation))
 
         return torch.cat((user, ups, fs), 1)
 
@@ -154,6 +208,8 @@ class FairRecStateRepresentationNetwork(nn.Module):
 STATE_REPRESENTATION = dict(
     drr_paper=DRRAvePaperStateRepresentationNetwork,
     drr_attention=DRRAveStateRepresentationNetwork,
+    drr_context=DRRAveContextStateRepresentationNetwork,
+    fairrec_context=FairRecContextStateRepresentationNetwork,
     fairrec_paper=FairRecPaperStateRepresentationNetwork,
     fairrec_combining=FairRecStateRepresentationNetwork,
     fairrec_adaptative=FairRecStateRepresentationNetwork,
@@ -178,9 +234,6 @@ class StateRepresentation(object):
         ).to(device)
 
         self.optimizer = torch.optim.Adam(self.network.parameters(), learning_rate)
-
-    # def load_pretrained_weights(self, user_embeddings, item_embeddings):
-    #     self.network.load_weights(user_embeddings, item_embeddings, self.device)
 
     def save_weights(self, path):
         torch.save(self.network.state_dict(), path)
