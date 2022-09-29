@@ -10,7 +10,6 @@ wandb/
 
 model/*
 !model/*.yaml
-!model/pmf
 
 data/*
 !data/*.yaml
