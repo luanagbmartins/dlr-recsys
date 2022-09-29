@@ -14,5 +14,3 @@ model/*
 
 data/*
 !data/*.yaml
-!data/ml-100k/item_groups.pkl
-!data/ml-1m/item_groups.pkl
