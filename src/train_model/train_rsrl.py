@@ -1,8 +1,10 @@
-from email.policy import default
 import os
 import json
 import pickle
 import luigi
+
+import zipfile
+import gdown
 
 import torch
 import numpy as np
@@ -84,6 +86,9 @@ class RSRL(luigi.Task):
                 os.path.join(self.output_path, "metrics.json")
             ),
         }
+
+    def requires(self):
+        return DownloadPMFModel()
 
     def run(self):
         dataset = self.load_data()
@@ -439,3 +444,24 @@ class RSRL(luigi.Task):
             json.dump(metrics, f)
 
         print("---------- Finish Evaluation")
+
+
+class DownloadPMFModel(luigi.Task):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.url = "https://drive.google.com/file/d/1zgoMWoJ1_dkjcV-EDMoGp1tP0FcjHZ11/view?usp=sharing"
+        self.id = "1zgoMWoJ1_dkjcV-EDMoGp1tP0FcjHZ11"
+        self.file = "model/pmf.zip"
+        self.path = "model/pmf"
+
+    def output(self):
+        return luigi.LocalTarget(self.path)
+
+    def run(self):
+        gdown.download(self.url, self.file, fuzzy=True)
+
+        with zipfile.ZipFile(self.file, "r") as zip_ref:
+            zip_ref.extractall(self.path)
+
+        os.remove(self.file)
