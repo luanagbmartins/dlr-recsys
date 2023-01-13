@@ -24,6 +24,4 @@ model_train:
     reward_version: paper
     srm_version: paper
     user_intent_threshold: 0
-    user_intent:  none
-    use_context_embedding: false
-    
+    user_intent:  none    

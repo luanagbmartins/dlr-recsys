@@ -21,6 +21,7 @@ model_train:
     done_count: 10
     fairness_constraints: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
     reward_threshold: 4.0
-    reward_version: attention
+    reward_version: paper
+    srm_version: paper
     user_intent_threshold: 0
     user_intent:  none
