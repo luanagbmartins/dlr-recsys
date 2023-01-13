@@ -234,6 +234,8 @@ class RSRL(luigi.Task):
         _recommended_item = []
         _random_recommended_item = []
         _exposure = []
+        _user_states = []
+        _user_actions = []
         for k in top_k:
             sum_precision = 0
             sum_propfair = 0
@@ -242,6 +244,8 @@ class RSRL(luigi.Task):
             recommended_item = []
             random_recommended_item = []
             exposure = []
+            user_states = {}
+            user_actions = {}
 
             env = ENV[self.algorithm](
                 users_dict=dataset["eval_users_dict"],
@@ -323,6 +327,24 @@ class RSRL(luigi.Task):
                 sum_propfair += result["propfair"]
                 sum_reward += result["reward"]
 
+                user_states[result["user_id"]] = {
+                    "states": [],
+                    "intent": [],
+                    "propfair": [],
+                }
+                user_states[result["user_id"]]["states"] = result["user_states"]
+                user_states[result["user_id"]]["intent"] = result["user_intent"]
+                user_states[result["user_id"]]["propfair"] = result["user_propfair"]
+
+                user_actions[result["user_id"]] = {
+                    "states": [],
+                    "intent": [],
+                    "propfair": [],
+                }
+                user_actions[result["user_id"]]["actions"] = result["user_action_rank"]
+                user_actions[result["user_id"]]["intent"] = result["user_intent"]
+                user_actions[result["user_id"]]["propfair"] = result["user_propfair"]
+
                 del eval_env
 
             _precision.append(sum_precision / len(dataset["eval_users_dict"]))
@@ -334,6 +356,8 @@ class RSRL(luigi.Task):
             _recommended_item.append(recommended_item)
             _random_recommended_item.append(random_recommended_item)
             _exposure.append(exposure)
+            _user_states.append(user_states)
+            _user_actions.append(user_actions)
 
         feature_df = pd.DataFrame(
             item_groups_df[["item_id"]]
@@ -345,6 +369,17 @@ class RSRL(luigi.Task):
 
         metrics = {}
         for k in range(len(top_k)):
+            with open(
+                os.path.join(self.output_path, "user_states_k{}.json".format(k)), "w"
+            ) as f:
+                json.dump(_user_states[k], f)
+                print(_user_states[k].keys())
+
+            with open(
+                os.path.join(self.output_path, "user_actions_k{}.json".format(k)), "w"
+            ) as f:
+                json.dump(_user_actions[k], f)
+
             recs = pd.DataFrame(
                 [i.values() for i in _recommended_item[k]], columns=["sorted_actions"]
             )
