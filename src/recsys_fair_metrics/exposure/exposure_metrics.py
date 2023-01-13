@@ -130,8 +130,8 @@ class ExposureMetric(object):
         return m
 
     def prob_exp(self, supp: List, prop: int):
-        w = np.log2(np.arange(2, self._k + 2))
-        # w = np.ones(self._k)
+        # w = np.log2(np.arange(2, self._k + 2))
+        w = np.ones(self._k)
         values = []
         for s in supp:
             rec_prob = self._df_sup_prob.loc[s].prob
@@ -239,7 +239,8 @@ class ExposureMetric(object):
         exp_final = []
         for group, rows in exp_cum.groupby(self._column):
             size_supp = [i + 1 for i in range(len(rows))]
-            values = (rows["prob_exp"].cumsum() / size_supp) * norm_factor
+
+            values = rows["prob_exp"].cumsum()  # / size_supp  # * norm_factor
 
             if len(rows) == 1:
                 x = np.array(list(range(len(rows)))) * 100
@@ -262,7 +263,7 @@ class ExposureMetric(object):
             template=TEMPLATE,
             legend_orientation="h",
             xaxis_title="% Producers",
-            yaxis_tickformat=".1%",
+            yaxis_tickformat="%",
             # yaxis=dict(ticksuffix="%"),
             yaxis_title="% Exposure".format(prop * self._k),
             legend=dict(y=-0.2),
