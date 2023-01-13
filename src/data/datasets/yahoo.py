@@ -19,9 +19,6 @@ class YahooLoadAndPrepareDataset(luigi.Task):
 
         self.data_dir = os.path.join(self.output_path, "yahoo")
 
-    # def requires(self):
-    #     return DownloadDataset(dataset="trivago", output_path=self.output_path)
-
     def output(self):
         return {
             "items_df": luigi.LocalTarget(os.path.join(self.data_dir, "movies.csv")),
@@ -61,12 +58,21 @@ class YahooLoadAndPrepareDataset(luigi.Task):
         self.prepareDataset(datasets)
 
     def load_dataset(self):
-        ratings_df = pd.read_csv(
+        train_df = pd.read_csv(
             os.path.join(self.data_dir, "ydata-ymusic-rating-study-v1_0-train.txt"),
             sep="\t",
             header=None,
         )
-        ratings_df.columns = ["user_id", "item_id", "rating"]
+        train_df.columns = ["user_id", "item_id", "rating"]
+
+        test_df = pd.read_csv(
+            os.path.join(self.data_dir, "ydata-ymusic-rating-study-v1_0-test.txt"),
+            sep="\t",
+            header=None,
+        )
+        test_df.columns = ["user_id", "item_id", "rating"]
+
+        ratings_df = pd.concat([train_df, test_df], axis=0)
 
         item_encoder = preprocessing.LabelEncoder().fit(ratings_df.item_id.values)
         ratings_df.item_id = item_encoder.transform(ratings_df.item_id.values)
