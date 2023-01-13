@@ -1,4 +1,5 @@
 import numpy as np
+import math
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -152,7 +153,7 @@ class OfflineFairEnv(OfflineEnv):
                 np.triu_indices(user_intent.shape[0], k=1)
             ]
             user_intent = (user_intent + 1) / 2
-            user_intent = user_intent.mean() * (1 - user_intent.std())
+            user_intent = user_intent.mean()
 
         elif (
             self.user_intent == "item_metadata_emb"
@@ -165,7 +166,7 @@ class OfflineFairEnv(OfflineEnv):
                 np.triu_indices(user_intent.shape[0], k=1)
             ]
             user_intent = (user_intent + 1) / 2
-            user_intent = user_intent.mean() * (1 - user_intent.std())
+            user_intent = user_intent.mean() 
 
         elif self.user_intent == "item_name_emb":  # Item name bert embedding
             _items_df = self.items_df[
@@ -177,7 +178,7 @@ class OfflineFairEnv(OfflineEnv):
                 np.triu_indices(user_intent.shape[0], k=1)
             ]
             user_intent = (user_intent + 1) / 2
-            user_intent = user_intent.mean() * (1 - user_intent.std())
+            user_intent = user_intent.mean()
 
         elif (
             self.user_intent == "item_name_metadata_emb"
@@ -190,48 +191,14 @@ class OfflineFairEnv(OfflineEnv):
                 self.items_metadata.index.isin(list(self.correctly_recommended))
             ]
             user_intent = user_intent.drop(["metadata"], axis=1).values
-
-            # sentence_embeddings = self.bert.encode(_items_df["item_name"].tolist())
             sentence_embeddings = self.title_emb.loc[_items_df["item_id"].tolist()]
 
             user_intent = np.concatenate((user_intent, sentence_embeddings), axis=1)
-
             user_intent = cosine_similarity(user_intent, user_intent)[
                 np.triu_indices(user_intent.shape[0], k=1)
             ]
             user_intent = (user_intent + 1) / 2
-            user_intent = user_intent.mean() * (1 - user_intent.std())
-
-        # elif self.user_intent == "item_metadata_emb_bert":
-        #     _items_df = self.items_metadata[
-        #         self.items_metadata.index.isin(list(self.correctly_recommended))
-        #     ]
-        #     user_intent = self.bert.encode(_items_df["metadata"].tolist())
-        #     user_intent = cosine_similarity(user_intent, user_intent)[
-        #         np.triu_indices(user_intent.shape[0], k=1)
-        #     ]
-        #     user_intent = (user_intent + 1) / 2
-        #     user_intent = user_intent.mean() * (1 - user_intent.std())
-
-        # elif self.user_intent == "item_metadata_date_emb":
-        #     _items_metadata = self.items_metadata[
-        #         self.items_metadata.index.isin(list(self.correctly_recommended))
-        #     ]
-        #     _items_df = self.items_df[
-        #         self.items_df.item_id.isin(list(self.correctly_recommended))
-        #     ]
-        #     _items_df = pd.concat([_items_df, _items_metadata], axis=1)[
-        #         ["release_date", "metadata"]
-        #     ]
-        #     _items_df["input"] = _items_df.apply(
-        #         lambda x: f"{x['release_date']}, {x['metadata']}", axis=1
-        #     )
-        #     user_intent = self.bert.encode(_items_df["input"].tolist())
-        #     user_intent = cosine_similarity(user_intent, user_intent)[
-        #         np.triu_indices(user_intent.shape[0], k=1)
-        #     ]
-        #     user_intent = (user_intent + 1) / 2
-        #     user_intent = user_intent.mean() * (1 - user_intent.std())
+            user_intent = user_intent.mean()
 
         else:
             raise "Not valid user intent"
@@ -289,18 +256,9 @@ class OfflineFairEnv(OfflineEnv):
                     / np.sum(self.fairness_constraints)
                 ) - (self.group_count[group] / np.sum(self.get_group_count()))
 
-                if reward > 0:
-                    fair_reward = (
-                        fair_reward + 1
-                        if user_intent <= self.user_intent_threshold
-                        else reward
-                    )
-                else:
-                    fair_reward = (
-                        fair_reward
-                        if user_intent <= self.user_intent_threshold
-                        else reward
-                    )
+                fair_reward = (
+                    fair_reward if user_intent <= self.user_intent_threshold else reward
+                )
 
             elif self.reward_version == "combining":
                 # Combining:
