@@ -1,34 +1,10 @@
-rm /home/luana/data/CEIA/Rurax-Moblix/Recommender_system_via_deep_RL/data/yahoo/item_groups.pkl
-rm /home/luana/data/CEIA/Rurax-Moblix/Recommender_system_via_deep_RL/data/yahoo_output_path.json
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo --local-scheduler
+# Dataset: Yahoo
+# Scripts for training of models: DRR, FairRec and A2Fair
+python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo --reward-version paper --srm-version paper --srm-size 3 --local-scheduler
 python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo_fair --reward-version paper --srm-version paper --srm-size 2 --local-scheduler
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo_fair --user-intent-threshold 0.68 --reward-version adaptative --srm-version adaptative --srm-size 3 --local-scheduler
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo_fair --user-intent-threshold 0.68 --reward-version combining --srm-version combining --srm-size 3 --local-scheduler
+python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo_fair --reward-version adaptative --srm-version adaptative --srm-size 3 --local-scheduler
 
-rm /home/luana/data/CEIA/Rurax-Moblix/Recommender_system_via_deep_RL/data/yahoo/item_groups.pkl
-rm /home/luana/data/CEIA/Rurax-Moblix/Recommender_system_via_deep_RL/data/yahoo_output_path.json
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo --local-scheduler
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo_fair --reward-version paper --srm-version paper --srm-size 2 --local-scheduler
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo_fair --user-intent-threshold 0.68 --reward-version adaptative --srm-version adaptative --srm-size 3 --local-scheduler
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo_fair --user-intent-threshold 0.68 --reward-version combining --srm-version combining --srm-size 3 --local-scheduler
+# Scripts for ablation study
 
-rm /home/luana/data/CEIA/Rurax-Moblix/Recommender_system_via_deep_RL/data/yahoo/item_groups.pkl
-rm /home/luana/data/CEIA/Rurax-Moblix/Recommender_system_via_deep_RL/data/yahoo_output_path.json
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo --local-scheduler
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo_fair --reward-version paper --srm-version paper --srm-size 2 --local-scheduler
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo_fair --user-intent-threshold 0.68 --reward-version adaptative --srm-version adaptative --srm-size 3 --local-scheduler
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo_fair --user-intent-threshold 0.68 --reward-version combining --srm-version combining --srm-size 3 --local-scheduler
-
-rm /home/luana/data/CEIA/Rurax-Moblix/Recommender_system_via_deep_RL/data/yahoo/item_groups.pkl
-rm /home/luana/data/CEIA/Rurax-Moblix/Recommender_system_via_deep_RL/data/yahoo_output_path.json
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo --local-scheduler
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo_fair --reward-version paper --srm-version paper --srm-size 2 --local-scheduler
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo_fair --user-intent-threshold 0.68 --reward-version adaptative --srm-version adaptative --srm-size 3 --local-scheduler
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo_fair --user-intent-threshold 0.68 --reward-version combining --srm-version combining --srm-size 3 --local-scheduler
-
-rm /home/luana/data/CEIA/Rurax-Moblix/Recommender_system_via_deep_RL/data/yahoo/item_groups.pkl
-rm /home/luana/data/CEIA/Rurax-Moblix/Recommender_system_via_deep_RL/data/yahoo_output_path.json
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo --local-scheduler
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo_fair --reward-version paper --srm-version paper --srm-size 2 --local-scheduler
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo_fair --user-intent-threshold 0.68 --reward-version adaptative --srm-version adaptative --srm-size 3 --local-scheduler
-python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo_fair --user-intent-threshold 0.68 --reward-version combining --srm-version combining --srm-size 3 --local-scheduler
+## A2Fair with Fairec state module
+python -m luigi --module train TrainRS --dataset-version yahoo --train-version yahoo_fair --reward-version adaptative --srm-version paper --srm-size 2 --local-scheduler
