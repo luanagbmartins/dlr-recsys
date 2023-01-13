@@ -1,5 +1,6 @@
 import os
 from tqdm import tqdm
+import math
 
 import torch
 import numpy as np
@@ -547,6 +548,10 @@ class DRRAgent:
         actor_loss = 0
 
         list_recommended_item = []
+        buffer_states = []
+        buffer_intent = []
+        buffer_actions = []
+        buffer_propfair = []
 
         # Environment
         user_id, items_ids, done = env.reset()
@@ -567,9 +572,13 @@ class DRRAgent:
 
             ## ou exploration
             if not self.is_test:
-                action = self.noise.get_action(
-                    action.detach().cpu().numpy()[0], steps
-                ).to(self.device)
+                action = self.noise.get_action(action.detach().cpu().numpy()[0], steps).to(
+                    self.device
+                )
+
+            buffer_states.append(state.detach().cpu().numpy().tolist())
+            buffer_intent.append(env._get_user_intent().tolist())
+            buffer_actions.append(action.detach().cpu().numpy().tolist()[0])
 
             ## Item
             recommended_item = self.recommend_item(
@@ -585,6 +594,16 @@ class DRRAgent:
             # Calculate reward and observe new state (in env)
             ## Step
             next_items_ids, reward, done, info = env.step(recommended_item, top_k=top_k)
+
+            propfair = 0
+            total_exp = np.sum(env.get_group_count())
+            if total_exp > 0:
+                propfair = np.sum(
+                    np.array(self.fairness_constraints)
+                    * np.log(1 + np.array(env.get_group_count()) / total_exp)
+                )
+
+            buffer_propfair.append(propfair)
 
             # get next_state
             # next_state = self.get_state([user_id], [[next_items_ids]])
@@ -650,6 +669,11 @@ class DRRAgent:
             "exposure": (np.array(env.get_group_count()) / total_exp).tolist(),
             "critic_loss": critic_loss / steps,
             "actor_loss": actor_loss / steps,
+            "user_id": user_id,
+            "user_states": buffer_states,
+            "user_intent": buffer_intent,
+            "user_action_rank": buffer_actions,
+            "user_propfair": buffer_propfair,
         }
 
     def offline_evaluate(self, env, top_k=0, available_items=None):
