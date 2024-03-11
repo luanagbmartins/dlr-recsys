@@ -1,7 +1,7 @@
 algorithm: "drr"
 model_train:
-    users_num: 6040
-    items_num: 3883
+    users_num: 69878
+    items_num: 10681
     embedding_dim: 100
     state_size: 5
     srm_size: 3
@@ -15,8 +15,8 @@ model_train:
     learning_starts: 1000
     replay_memory_size: 1000000
     batch_size: 64
-    reward_model: model/bpmf/bpmf_1m.pickle
-    embedding_network_weights: model/pmf/ml-1m_trained_pmf.pt
+    reward_model: model/bpmf/bpmf_10m.pickle
+    embedding_network_weights: model/pmf/ml_10m_trained_pmf.pt
     use_reward_model: true
     n_groups: 10
     done_count: 10

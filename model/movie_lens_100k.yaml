@@ -15,7 +15,9 @@ model_train:
     learning_starts: 1000
     replay_memory_size: 1000000
     batch_size: 64
-    embedding_network_weights: model/pmf/ml_100k_emb_100_ratio_0.800000_bs_1000_e_200_wd_0.100000_lr_0.000100_trained_pmf.pt
+    reward_model: model/bpmf/bpmf_ml-100k.pickle
+    embedding_network_weights: model/pmf/ml-100k_trained_pmf.pt
+    # model/pmf/ml_100k_emb_100_ratio_0.800000_bs_1000_e_200_wd_0.100000_lr_0.000100_trained_pmf.pt
     use_reward_model: true
     n_groups: 10
     done_count: 10

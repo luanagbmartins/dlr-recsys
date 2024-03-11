@@ -5,7 +5,7 @@ model_train:
     embedding_dim: 100
     state_size: 5
     srm_size: 3
-    max_eps_num: 10000
+    max_eps_num: 50000
     actor_hidden_dim: 512
     actor_learning_rate: 0.0001
     critic_hidden_dim: 512
@@ -15,7 +15,8 @@ model_train:
     learning_starts: 1000
     replay_memory_size: 1000000
     batch_size: 64
-    embedding_network_weights: model/pmf/yahoo_emb_100_ratio_0.800000_bs_100000_e_59_r0.585930_wd_0.100000_lr_0.000100_trained_pmf.pt
+    reward_model: model/bpmf/bpmf_yahoo.pickle
+    embedding_network_weights: model/pmf/yahoo_trained_pmf.pt
     use_reward_model: true
     n_groups: 10
     done_count: 10
