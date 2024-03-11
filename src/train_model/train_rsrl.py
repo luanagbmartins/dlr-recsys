@@ -29,7 +29,7 @@ class RSRL(luigi.Task):
     """Recommender System with Reinforcement Learning"""
 
     output_path = luigi.Parameter()
-
+    seed: int = luigi.IntParameter()
     algorithm: str = luigi.ChoiceParameter(choices=AGENT.keys())
     epochs: int = luigi.IntParameter(default=5)
     users_num: int = luigi.IntParameter(default=6041)
@@ -55,9 +55,9 @@ class RSRL(luigi.Task):
     user_intent: str = luigi.Parameter(default="item_emb_pmf")
     top_k: int = luigi.IntParameter(default=10)
     done_count: int = luigi.IntParameter(default=10)
-    use_context_embedding: bool = luigi.BoolParameter(default=False)
     srm_version: str = luigi.Parameter(default="")
 
+    reward_model: str = luigi.Parameter(default="")
     embedding_network_weights: str = luigi.Parameter(default="")
     use_reward_model: bool = luigi.BoolParameter(default=True)
 
@@ -88,7 +88,8 @@ class RSRL(luigi.Task):
         }
 
     def requires(self):
-        return DownloadPMFModel()
+        # return DownloadPMFModel()
+        return DownloadBPMFModel()
 
     def run(self):
         dataset = self.load_data()
@@ -128,19 +129,19 @@ class RSRL(luigi.Task):
 
         return dataset
 
-    def seed_all(self, seed):
+    def seed_all(self):
         cuda = torch.device(
             "cuda" if torch.cuda.is_available() and not self.no_cuda else "cpu"
         )
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
+        random.seed(self.seed)
+        np.random.seed(self.seed)
+        torch.manual_seed(self.seed)
         if cuda:
             torch.cuda.empty_cache()
-            torch.cuda.manual_seed(seed=seed)
+            torch.cuda.manual_seed(seed=self.seed)
 
     def train_model(self, dataset):
-        self.seed_all(0)
+        self.seed_all()
         print("---------- Seeds initialized")
 
         print("---------- Algorithm ", self.algorithm)
@@ -193,12 +194,12 @@ class RSRL(luigi.Task):
             replay_memory_size=self.replay_memory_size,
             batch_size=self.batch_size,
             model_path=self.output_path,
+            reward_model_path=self.reward_model,
             embedding_network_weights_path=self.embedding_network_weights,
             n_groups=self.n_groups,
             fairness_constraints=self.fairness_constraints,
             use_reward_model=self.use_reward_model,
             no_cuda=self.no_cuda,
-            use_context_embedding=self.use_context_embedding,
         )
 
         print("---------- Start Training")
@@ -267,7 +268,7 @@ class RSRL(luigi.Task):
 
             recommender = AGENT[self.algorithm](
                 env=env,
-                is_test=True,
+                is_test=False,
                 users_num=self.users_num,
                 items_num=self.items_num,
                 srm_size=self.srm_size,
@@ -285,16 +286,24 @@ class RSRL(luigi.Task):
                 replay_memory_size=self.replay_memory_size,
                 batch_size=self.batch_size,
                 model_path=self.output_path,
+                reward_model_path=self.reward_model,
                 embedding_network_weights_path=self.embedding_network_weights,
                 n_groups=self.n_groups,
                 fairness_constraints=self.fairness_constraints,
                 use_reward_model=self.use_reward_model,
                 no_cuda=self.no_cuda,
-                use_context_embedding=self.use_context_embedding,
             )
 
-            for user_id in tqdm(available_users):
+            if len(available_users) > 600:
+                import random
 
+                random.shuffle(available_users)
+                num_selected = int(len(available_users) * 0.20)
+                _available_users = available_users[:num_selected]
+            else:
+                _available_users = available_users
+
+            for user_id in tqdm(_available_users):
                 eval_env = ENV[self.algorithm](
                     users_dict=dataset["eval_users_dict"],
                     n_groups=self.n_groups,
@@ -327,31 +336,39 @@ class RSRL(luigi.Task):
                 sum_propfair += result["propfair"]
                 sum_reward += result["reward"]
 
-                user_states[result["user_id"]] = {
+                user_states[int(result["user_id"])] = {
                     "states": [],
                     "intent": [],
                     "propfair": [],
                 }
-                user_states[result["user_id"]]["states"] = result["user_states"]
-                user_states[result["user_id"]]["intent"] = result["user_intent"]
-                user_states[result["user_id"]]["propfair"] = result["user_propfair"]
+                user_states[int(result["user_id"])]["states"] = result["user_states"]
+                user_states[int(result["user_id"])]["intent"] = result["user_intent"]
+                user_states[int(result["user_id"])]["propfair"] = result[
+                    "user_propfair"
+                ]
 
-                user_actions[result["user_id"]] = {
-                    "states": [],
+                user_actions[int(result["user_id"])] = {
                     "intent": [],
                     "propfair": [],
+                    "precision": [],
+                    "reward": [],
                 }
-                user_actions[result["user_id"]]["actions"] = result["user_action_rank"]
-                user_actions[result["user_id"]]["intent"] = result["user_intent"]
-                user_actions[result["user_id"]]["propfair"] = result["user_propfair"]
+                user_actions[int(result["user_id"])]["intent"] = result["user_intent"]
+                user_actions[int(result["user_id"])]["propfair"] = result[
+                    "user_propfair"
+                ]
+                user_actions[int(result["user_id"])]["precision"] = result[
+                    "precision_list"
+                ]
+                user_actions[int(result["user_id"])]["reward"] = result["reward_list"]
 
                 del eval_env
 
-            _precision.append(sum_precision / len(dataset["eval_users_dict"]))
-            _propfair.append(sum_propfair / len(dataset["eval_users_dict"]))
+            _precision.append(sum_precision / len(_available_users))
+            _propfair.append(sum_propfair / len(_available_users))
             _ufg.append(
-                (sum_propfair / len(dataset["eval_users_dict"]))
-                / (1 - (sum_precision / len(dataset["eval_users_dict"])))
+                (sum_propfair / len(_available_users))
+                / (1 - (sum_precision / len(_available_users)))
             )
             _recommended_item.append(recommended_item)
             _random_recommended_item.append(random_recommended_item)
@@ -370,11 +387,12 @@ class RSRL(luigi.Task):
         metrics = {}
         for k in range(len(top_k)):
             with open(
-                os.path.join(self.output_path, "user_states_k{}.json".format(k)), "w"
+                os.path.join(self.output_path, "user_states_k{}.json".format(k)),
+                "w",
             ) as f:
                 json.dump(_user_states[k], f)
-                print(_user_states[k].keys())
 
+            # print(_user_actions[k])
             with open(
                 os.path.join(self.output_path, "user_actions_k{}.json".format(k)), "w"
             ) as f:
@@ -489,6 +507,27 @@ class DownloadPMFModel(luigi.Task):
         self.id = "1zgoMWoJ1_dkjcV-EDMoGp1tP0FcjHZ11"
         self.file = "model/pmf.zip"
         self.path = "model/pmf"
+
+    def output(self):
+        return luigi.LocalTarget(self.path)
+
+    def run(self):
+        gdown.download(self.url, self.file, fuzzy=True)
+
+        with zipfile.ZipFile(self.file, "r") as zip_ref:
+            zip_ref.extractall(self.path)
+
+        os.remove(self.file)
+
+
+class DownloadBPMFModel(luigi.Task):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.url = "https://drive.google.com/file/d/1Wj8J0fELYN2S_F-8xwvgljA1ZhlCAUZc/view?usp=sharing"
+        self.id = "1Wj8J0fELYN2S_F-8xwvgljA1ZhlCAUZc"
+        self.file = "model/bpmf.zip"
+        self.path = "model/bpmf"
 
     def output(self):
         return luigi.LocalTarget(self.path)
