@@ -4,21 +4,25 @@ import yaml
 import json
 
 from src.data.datasets import (
-    ML1MLoadAndPrepareDataset,
     ML100kLoadAndPrepareDataset,
+    ML1MLoadAndPrepareDataset,
+    ML10MLoadAndPrepareDataset,
+    ML20MLoadAndPrepareDataset,
+    ML25MLoadAndPrepareDataset,
     YelpLoadAndPrepareDataset,
     YelpPDLoadAndPrepareDataset,
     YelpTOLoadAndPrepareDataset,
     YahooLoadAndPrepareDataset,
+    LFM2BLoadAndPrepareDataset,
 )
 
 ## Available versions of the GenerateDataset subtasks
 DATASETS = dict(
-    movie_lens_1m=ML1MLoadAndPrepareDataset,
     movie_lens_100k=ML100kLoadAndPrepareDataset,
-    yelp=YelpLoadAndPrepareDataset,
-    yelp_pd=YelpPDLoadAndPrepareDataset,
-    yelp_to=YelpTOLoadAndPrepareDataset,
+    movie_lens_1m=ML1MLoadAndPrepareDataset,
+    movie_lens_10m=ML10MLoadAndPrepareDataset,
+    movie_lens_20m=ML20MLoadAndPrepareDataset,
+    movie_lens_25m=ML25MLoadAndPrepareDataset,
     yahoo=YahooLoadAndPrepareDataset,
 )
 

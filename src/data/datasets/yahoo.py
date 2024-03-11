@@ -8,6 +8,7 @@ from sklearn import preprocessing
 
 
 from ..utils import DownloadDataset
+from ..utils import split_train_test
 
 
 class YahooLoadAndPrepareDataset(luigi.Task):
@@ -33,14 +34,14 @@ class YahooLoadAndPrepareDataset(luigi.Task):
             "train_users_dict": luigi.LocalTarget(
                 os.path.join(self.data_dir, "train_users_dict.pkl")
             ),
-            "train_users_history_lens": luigi.LocalTarget(
-                os.path.join(self.data_dir, "train_users_history_lens.pkl")
-            ),
             "eval_users_dict": luigi.LocalTarget(
                 os.path.join(self.data_dir, "eval_users_dict.pkl")
             ),
-            "eval_users_history_lens": luigi.LocalTarget(
-                os.path.join(self.data_dir, "eval_users_history_lens.pkl")
+            "train_users_df": luigi.LocalTarget(
+                os.path.join(self.data_dir, "train_users_df.csv")
+            ),
+            "eval_users_df": luigi.LocalTarget(
+                os.path.join(self.data_dir, "eval_users_df.csv")
             ),
             "users_history_lens": luigi.LocalTarget(
                 os.path.join(self.data_dir, "users_history_lens.pkl")
@@ -84,6 +85,9 @@ class YahooLoadAndPrepareDataset(luigi.Task):
         users_df = pd.DataFrame(ratings_df.user_id.unique(), columns=["user_id"])
         items_metadata_df = items_df
         items_metadata_df["metadata"] = "[]"
+
+        ratings_df = ratings_df.reset_index()
+        ratings_df = ratings_df.rename(columns={"index": "timestamp"})
 
         # Save preprocessed dataframes
         datasets = {
@@ -134,30 +138,33 @@ class YahooLoadAndPrepareDataset(luigi.Task):
         w = [i if i > 0 else self.n_groups for i in w]
         item_groups = {i: w[i] for i in range(items_num)}
 
+        train_df, test_df = split_train_test(datasets["ratings"])
+        train_df.to_csv(self.output()["train_users_df"].path)
+        test_df.to_csv(self.output()["eval_users_df"].path)
+        print(train_df.shape, test_df.shape)
+
         # Training setting
-        train_users_num = int(users_num * 0.8)
-        train_users_dict = {k: users_dict.get(k) for k in range(0, train_users_num - 1)}
-        train_users_history_lens = users_history_lens[:train_users_num]
+        train_users_dict = {user: [] for user in set(train_df["user_id"])}
+        ratings_df_gen = train_df.iterrows()
+        for data in ratings_df_gen:
+            train_users_dict[data[1]["user_id"]].append(
+                (data[1]["item_id"], data[1]["rating"])
+            )
 
         # Evaluating setting
-        eval_users_num = int(users_num * 0.2)
-        eval_users_dict = {
-            k: users_dict[k] for k in range(users_num - eval_users_num, users_num)
-        }
-        eval_users_history_lens = users_history_lens[-eval_users_num:]
+        eval_users_dict = {user: [] for user in set(test_df["user_id"])}
+        ratings_df_gen = test_df.iterrows()
+        for data in ratings_df_gen:
+            eval_users_dict[data[1]["user_id"]].append(
+                (data[1]["item_id"], data[1]["rating"])
+            )
 
         # Save processed data
         with open(self.output()["train_users_dict"].path, "wb") as file:
             pickle.dump(train_users_dict, file)
 
-        with open(self.output()["train_users_history_lens"].path, "wb") as file:
-            pickle.dump(train_users_history_lens, file)
-
         with open(self.output()["eval_users_dict"].path, "wb") as file:
             pickle.dump(eval_users_dict, file)
-
-        with open(self.output()["eval_users_history_lens"].path, "wb") as file:
-            pickle.dump(eval_users_history_lens, file)
 
         with open(self.output()["users_history_lens"].path, "wb") as file:
             pickle.dump(users_history_lens, file)

@@ -12,17 +12,17 @@ from ..utils import DownloadDataset
 from ..utils import split_train_test
 
 
-class ML1MLoadAndPrepareDataset(luigi.Task):
+class ML25MLoadAndPrepareDataset(luigi.Task):
     output_path: str = luigi.Parameter(default=os.path.join(os.getcwd(), "data/"))
     n_groups: int = luigi.IntParameter(default=4)
 
     def __init__(self, *args, **kwargs):
-        super(ML1MLoadAndPrepareDataset, self).__init__(*args, **kwargs)
+        super(ML25MLoadAndPrepareDataset, self).__init__(*args, **kwargs)
 
-        self.data_dir = os.path.join(self.output_path, "ml-1m")
+        self.data_dir = os.path.join(self.output_path, "ml-25m")
 
     def requires(self):
-        return DownloadDataset(dataset="ml-1m", output_path=self.output_path)
+        return DownloadDataset(dataset="ml-25m", output_path=self.output_path)
 
     def output(self):
         return {
@@ -33,7 +33,6 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
             "title_emb": luigi.LocalTarget(
                 os.path.join(self.data_dir, "title_emb.csv")
             ),
-            "users_df": luigi.LocalTarget(os.path.join(self.data_dir, "users.csv")),
             "ratings_df": luigi.LocalTarget(os.path.join(self.data_dir, "ratings.csv")),
             "train_users_dict": luigi.LocalTarget(
                 os.path.join(self.data_dir, "train_users_dict.pkl")
@@ -63,51 +62,19 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
         self.prepareDataset(datasets)
 
     def load_dataset(self):
-
-        import chardet
-
-        def detect_encoding(file_path):
-            with open(file_path, "rb") as f:
-                result = chardet.detect(f.read())
-            return result["encoding"]
-
-        ratings_names = ["user_id", "item_id", "rating", "timestamp"]
-        encoding = detect_encoding(os.path.join(self.data_dir, "ratings.dat"))
-        ratings_df = pd.read_table(
-            os.path.join(self.data_dir, "ratings.dat"),
-            sep="::",
-            header=None,
-            names=ratings_names,
-            engine="python",
-            encoding=encoding,
+        ratings_df = pd.read_csv(os.path.join(self.data_dir, "ratings.csv"))
+        ratings_df = ratings_df.rename(
+            columns={"userId": "user_id", "movieId": "item_id"}
         )
 
-        user_names = ["user_id", "gender", "age", "occupation", "zip_code"]
-        encoding = detect_encoding(os.path.join(self.data_dir, "users.dat"))
-        users_df = pd.read_table(
-            os.path.join(self.data_dir, "users.dat"),
-            sep="::",
-            header=None,
-            names=user_names,
-            engine="python",
-            encoding=encoding,
-        )
-
-        movies_names = ["item_id", "item_name", "genres"]
-        encoding = detect_encoding(os.path.join(self.data_dir, "movies.dat"))
-        movies_df = pd.read_table(
-            os.path.join(self.data_dir, "movies.dat"),
-            sep="::",
-            header=None,
-            names=movies_names,
-            engine="python",
-            encoding=encoding,
+        movies_df = pd.read_csv(os.path.join(self.data_dir, "movies.csv"))
+        movies_df = movies_df.rename(
+            columns={"movieId": "item_id", "title": "item_name"}
         )
 
         movies_df["item_id"] = movies_df["item_id"].apply(pd.to_numeric)
         ratings_df["user_id"] = ratings_df["user_id"].astype("int")
         ratings_df["item_id"] = ratings_df["item_id"].astype("int")
-        users_df["user_id"] = users_df["user_id"].astype("int")
         movies_df["item_id"] = movies_df["item_id"].astype("int")
 
         # Encode target labels with value between 0 and n_classes-1
@@ -117,8 +84,7 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
         ratings_df["item_id"] = movies_encoder.transform(ratings_df["item_id"].values)
 
         users_encoder = preprocessing.LabelEncoder()
-        users_encoder.fit(users_df["user_id"].values)
-        users_df["user_id"] = users_encoder.transform(users_df["user_id"].values)
+        users_encoder.fit(ratings_df["user_id"].values)
         ratings_df["user_id"] = users_encoder.transform(ratings_df["user_id"].values)
 
         # Getting series of lists by applying split operation.
@@ -150,7 +116,6 @@ class ML1MLoadAndPrepareDataset(luigi.Task):
         datasets = {
             "ratings": ratings_df,
             "movies": movies_df,
-            "users": users_df,
             "items_metadata": items_metadata,
             "title_emb": title_emb,
         }

@@ -3,35 +3,57 @@ import abc
 import math
 import luigi
 import zipfile
+import bz2
 import requests
+import pandas as pd
 from tqdm import tqdm
 
 OUTPUT_PATH = os.path.join(os.getcwd(), "data/")
 DATASETS = {
+    "ml-100k": {
+        "type": "url",
+        "download": ["https://files.grouplens.org/datasets/movielens/ml-100k.zip"],
+    },
     "ml-1m": {
         "type": "url",
         "download": ["https://files.grouplens.org/datasets/movielens/ml-1m.zip"],
     },
-    "ml-100k": {
+    "ml-10m": {
         "type": "url",
-        "download": ["https://files.grouplens.org/datasets/movielens/ml-100k.zip"],
+        "download": ["https://files.grouplens.org/datasets/movielens/ml-10m.zip"],
+    },
+    "ml-20m": {
+        "type": "url",
+        "download": ["https://files.grouplens.org/datasets/movielens/ml-20m.zip"],
     },
     "ml-25m": {
         "type": "url",
         "download": ["https://files.grouplens.org/datasets/movielens/ml-25m.zip"],
     },
-    "trivago": {
-        "type": "url",
-        "download": [
-            "https://recsys2019data.trivago.com/train.csv",
-            "https://recsys2019data.trivago.com/item_metadata.csv",
-        ],
-    },
-    "foursquare": {
-        "type": "kaggle",
-        "download": ["chetanism/foursquare-nyc-and-tokyo-checkin-dataset"],
-    },
 }
+
+
+def split_train_test(data, train_ratio=0.8):
+    # Lista para armazenar os subsets de treino e teste
+    train_list = []
+    test_list = []
+
+    for _, group in data.groupby("user_id"):
+        # Ordena as interações por timestamp
+        group = group.sort_values("timestamp")
+
+        # Calcula o ponto de corte para o treino (80% das interações)
+        split_point = math.ceil(len(group) * train_ratio)
+
+        # Separa o conjunto de treino e teste
+        train_list.append(group.iloc[:split_point])
+        test_list.append(group.iloc[split_point:])
+
+    # Concatena todos os subsets de treino e teste
+    train_data = pd.concat(train_list)
+    test_data = pd.concat(test_list)
+
+    return train_data, test_data
 
 
 class DownloadDataset(luigi.Task, metaclass=abc.ABCMeta):
@@ -80,6 +102,12 @@ class DownloadDataset(luigi.Task, metaclass=abc.ABCMeta):
             if output_file.endswith(".zip"):
                 with zipfile.ZipFile(output_file, "r") as zip_ref:
                     zip_ref.extractall(output_path)
+
+            if output_file.endswith(".bz2"):
+                _zipfile = bz2.BZ2File(output_file)
+                data = _zipfile.read()
+                newfilepath = output_file[:-4]
+                open(newfilepath, "wb").write(data)
 
     def download_kaggle(self, name, output_path=".", **kws):
         try:
