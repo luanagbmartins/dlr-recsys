@@ -1,10 +1,11 @@
 import os
+import pickle
 from tqdm import tqdm
 import math
 
 import torch
 import numpy as np
-
+import pickle
 from src.model.pmf import PMF
 from src.model.actor import Actor
 from src.model.critic import Critic
@@ -25,6 +26,7 @@ class DRRAgent:
         srm_size,
         srm_type,
         model_path,
+        reward_model_path,
         embedding_network_weights_path,
         train_version,
         is_test=False,
@@ -43,7 +45,6 @@ class DRRAgent:
         fairness_constraints=[0.25, 0.25, 0.25, 0.25],
         no_cuda=False,
         use_reward_model=True,
-        use_context_embedding=False,
     ):
         # no_cuda = True
         self.device = torch.device(
@@ -57,6 +58,7 @@ class DRRAgent:
 
         self.model_path = model_path
 
+        self.reward_model_path = reward_model_path
         self.embedding_network_weights_path = embedding_network_weights_path
 
         self.embedding_dim = embedding_dim
@@ -103,37 +105,34 @@ class DRRAgent:
             device=self.device,
         )
 
-        self.reward_model = PMF(users_num, items_num, self.embedding_dim).to(
-            self.device
-        )
-        self.reward_model.load_state_dict(
+        self.emb_model = PMF(users_num, items_num, self.embedding_dim).to(self.device)
+        self.emb_model.load_state_dict(
             torch.load(
                 self.embedding_network_weights_path,
                 map_location=torch.device(self.device),
             )
         )
 
-        self.user_embeddings = self.reward_model.user_embeddings.weight.data
-        self.item_embeddings = self.reward_model.item_embeddings.weight.data
+        # self.reward_model = self.emb_model
+
+        with open(self.reward_model_path, "rb") as handle:
+            self.reward_model = pickle.load(handle)
+
+        # self.user_embeddings = (
+        #     torch.tensor(self.reward_model.user_features_).float().to(self.device)
+        # )
+        # self.item_embeddings = (
+        #     torch.tensor(self.reward_model.item_features_).float().to(self.device)
+        # )
+
+        self.user_embeddings = self.emb_model.user_embeddings.weight.data
+        self.item_embeddings = self.emb_model.item_embeddings.weight.data
 
         print("----- Reward Model: ", use_reward_model)
         if self.env and use_reward_model:
             self.env.reward_model = self.reward_model
             self.env.item_embeddings = self.item_embeddings
             self.env.device = self.device
-
-        print("----- Context Embedding: ", use_context_embedding)
-        self.context_emb = None
-        if use_context_embedding:
-            from context_embedding.recommenders import ContextRecommender
-            from context_embedding.embedders import ContextEncoder_v1
-
-            self.context_emb = ContextRecommender(
-                model_class=ContextEncoder_v1,
-                model_folder="context_embedding/movielens_runs/ContextEmbv1_5_512_Att4_Triplet_Cosine_e100_d1",
-                data_folder="context_embedding/ml-100k",
-                item_data_file_name="item_data_v1.csv",
-            )
 
         self.buffer = PriorityExperienceReplay(
             buffer_size=self.replay_memory_size,
@@ -146,7 +145,7 @@ class DRRAgent:
         # noise
         self.noise = OUNoise(self.embedding_dim, decay_period=10)
 
-        self.is_test = is_test
+        self.is_test = False
 
         # wandb
         self.use_wandb = use_wandb
@@ -202,13 +201,14 @@ class DRRAgent:
     def get_state(self, user_id, items_ids, group_counts=None):
         items_emb = self.get_items_emb(items_ids)
 
-        context_emb = (
-            torch.from_numpy(self.context_emb.get_embedding(items_ids.tolist())).to(
-                self.device
-            )
-            if self.context_emb
-            else None
-        )
+        # context_emb = (
+        #     torch.from_numpy(self.context_emb.get_embedding(items_ids.tolist())).to(
+        #         self.device
+        #     )
+        #     if self.context_emb
+        #     else None
+        # )
+        context_emb = None
 
         ## SRM state
         state = self.srm.network(
@@ -261,7 +261,6 @@ class DRRAgent:
         sum_reward = 0
 
         for episode in tqdm(range(max_episode_num)):
-
             # episodic reward
             episode_reward = 0
             steps = 0
@@ -291,10 +290,10 @@ class DRRAgent:
                     action = self.actor.network(state.detach())
 
                 ## ou exploration
-                if not self.is_test:
-                    action = self.noise.get_action(
-                        action.detach().cpu().numpy()[0], steps
-                    ).to(self.device)
+                # if not self.is_test:
+                action = self.noise.get_action(
+                    action.detach().cpu().numpy()[0], steps
+                ).to(self.device)
 
                 ## item
                 recommended_item = self.recommend_item(
@@ -321,9 +320,11 @@ class DRRAgent:
                     # action
                     action,
                     # reward
-                    torch.FloatTensor([np.sum(reward)]).to(self.device)
-                    if top_k
-                    else torch.FloatTensor([reward]).to(self.device),
+                    (
+                        torch.FloatTensor([np.sum(reward)]).to(self.device)
+                        if top_k
+                        else torch.FloatTensor([reward]).to(self.device)
+                    ),
                     # next_state
                     torch.Tensor(
                         np.concatenate(
@@ -475,7 +476,7 @@ class DRRAgent:
         ).unsqueeze(1)
 
         # update priority
-        for (p, i) in zip(td_targets, index_batch):
+        for p, i in zip(td_targets, index_batch):
             self.buffer.update_priority(abs(p[0]) + self.epsilon_for_priority, i)
 
         # get Q values for current state
@@ -507,9 +508,8 @@ class DRRAgent:
         return value_loss.detach().cpu().numpy(), policy_loss.detach().cpu().numpy()
 
     def online_evaluate(self, env, top_k=False, available_items=None, load_model=False):
-
+        env.item_embeddings = self.item_embeddings
         if load_model:
-
             # Get list of checkpoints
             actor_checkpoint = sorted(
                 [
@@ -552,6 +552,8 @@ class DRRAgent:
         buffer_intent = []
         buffer_actions = []
         buffer_propfair = []
+        buffer_precision = []
+        buffer_reward = []
 
         # Environment
         user_id, items_ids, done = env.reset()
@@ -571,13 +573,12 @@ class DRRAgent:
                 action = self.actor.network(state.detach())
 
             ## ou exploration
-            if not self.is_test:
-                action = self.noise.get_action(action.detach().cpu().numpy()[0], steps).to(
-                    self.device
-                )
+            # if not self.is_test:
+            # action = self.noise.get_action(action.detach().cpu().numpy()[0], steps).to(
+            #     self.device
+            # )
 
             buffer_states.append(state.detach().cpu().numpy().tolist())
-            buffer_intent.append(env._get_user_intent().tolist())
             buffer_actions.append(action.detach().cpu().numpy().tolist()[0])
 
             ## Item
@@ -615,9 +616,11 @@ class DRRAgent:
                     np.concatenate(([user_id], items_ids, group_counts), axis=0)
                 ).to(self.device),
                 action,
-                torch.FloatTensor([np.sum(reward)]).to(self.device)
-                if top_k
-                else torch.FloatTensor([reward]).to(self.device),
+                (
+                    torch.FloatTensor([np.sum(reward)]).to(self.device)
+                    if top_k
+                    else torch.FloatTensor([reward]).to(self.device)
+                ),
                 torch.Tensor(
                     np.concatenate(
                         ([user_id], next_items_ids, next_group_counts), axis=0
@@ -649,6 +652,9 @@ class DRRAgent:
             else:
                 mean_precision += info["precision"]
 
+            buffer_precision.append(info["precision"])
+            buffer_reward.append(np.sum(reward) if top_k else reward)
+
             available_items = (
                 available_items - set(recommended_item) if available_items else None
             )
@@ -663,8 +669,10 @@ class DRRAgent:
 
         return {
             "precision": mean_precision / steps,
+            "precision_list": buffer_precision,
             "propfair": propfair,
             "reward": episode_reward,
+            "reward_list": buffer_reward,
             "recommended_items": {user_id: list_recommended_item},
             "exposure": (np.array(env.get_group_count()) / total_exp).tolist(),
             "critic_loss": critic_loss / steps,
@@ -677,7 +685,6 @@ class DRRAgent:
         }
 
     def offline_evaluate(self, env, top_k=0, available_items=None):
-
         steps = 0
         mean_precision = 0
         mean_ndcg = 0
