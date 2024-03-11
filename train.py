@@ -23,6 +23,7 @@ class TrainRS(luigi.Task):
     reward_version: str = luigi.Parameter(default="")
     srm_version: str = luigi.Parameter(default="")
     srm_size: int = luigi.IntParameter(default=0)
+    seed: int = luigi.IntParameter(default=0)
 
     def __init__(self, *args, **kwargs):
         super(TrainRS, self).__init__(*args, **kwargs)
@@ -90,6 +91,7 @@ class TrainRS(luigi.Task):
         print("---------- Train Model")
         yield RSRL(
             **_train_config["model_train"],
+            seed=self.seed,
             algorithm=_train_config["algorithm"],
             output_path=self.output_path,
             train_version=self.train_version,
