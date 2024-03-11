@@ -2,7 +2,7 @@ import numpy as np
 import math
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
-
+import torch
 from .drr_env import OfflineEnv
 
 
@@ -27,7 +27,6 @@ class OfflineFairEnv(OfflineEnv):
         use_only_reward_model=False,
         device="cpu",
     ):
-
         """Offline fair environment for recommendation system.
 
         ### Action Space
@@ -119,9 +118,14 @@ class OfflineFairEnv(OfflineEnv):
         self.items_metadata = items_metadata
         self.items_df = items_df
 
-        self.item_embeddings = (
-            self.reward_model.item_embeddings.weight.data if self.reward_model else None
-        )
+        # self.item_embeddings = (
+        #     torch.tensor(self.reward_model.item_features_).to(self.device)
+        #     if self.reward_model
+        #     else None
+        # )
+
+        self.item_embeddings = None
+        # (self.emb_model.item_embeddings.weight.data if self.reward_model else None)
 
         self.items_metadata = self.items_metadata.set_index("item_id")
         self.items_metadata = self.items_metadata[["metadata"]]
@@ -166,7 +170,7 @@ class OfflineFairEnv(OfflineEnv):
                 np.triu_indices(user_intent.shape[0], k=1)
             ]
             user_intent = (user_intent + 1) / 2
-            user_intent = user_intent.mean() 
+            user_intent = user_intent.mean()
 
         elif self.user_intent == "item_name_emb":  # Item name bert embedding
             _items_df = self.items_df[
@@ -202,7 +206,7 @@ class OfflineFairEnv(OfflineEnv):
 
         else:
             raise "Not valid user intent"
-        return user_intent
+        return 1 - user_intent
 
     def _get_fair_reward(self, group, reward):
         """Get reward for the action.
@@ -248,17 +252,17 @@ class OfflineFairEnv(OfflineEnv):
                 else:
                     fair_reward = -1
 
-            elif self.reward_version == "adaptative":
-                # Adaptative:
-                user_intent = self._get_user_intent()
-                fair_reward = (
-                    self.fairness_constraints[group - 1]
-                    / np.sum(self.fairness_constraints)
-                ) - (self.group_count[group] / np.sum(self.get_group_count()))
+            # elif self.reward_version == "adaptative":
+            #     # Adaptative:
+            #     user_intent = self._get_user_intent()
+            #     fair_reward = (
+            #         self.fairness_constraints[group - 1]
+            #         / np.sum(self.fairness_constraints)
+            #     ) - (self.group_count[group] / np.sum(self.get_group_count()))
 
-                fair_reward = (
-                    fair_reward if user_intent <= self.user_intent_threshold else reward
-                )
+            #     fair_reward = (
+            #         fair_reward if user_intent <= self.user_intent_threshold else reward
+            #     )
 
             elif self.reward_version == "combining":
                 # Combining:
@@ -268,7 +272,9 @@ class OfflineFairEnv(OfflineEnv):
                     / np.sum(self.fairness_constraints)
                 ) - (self.group_count[group] / np.sum(self.get_group_count()))
 
-                fair_reward = (reward * user_intent) + (fair_reward * (1 - user_intent))
+                fair_reward = (reward * (1 - user_intent)) + (
+                    fair_reward * (user_intent)
+                )
 
         else:
             # The item is already recommended, therefore penalizes the agent

@@ -193,28 +193,32 @@ class OfflineEnv(object):
                 and action not in self.recommended_items
             ):
                 if self.reward_model:
-                    reward = (
-                        self.reward_model.predict(
-                            torch.tensor([self.user]).long().to(self.device),
-                            torch.tensor([action]).long().to(self.device),
-                        )
-                        .detach()
-                        .cpu()
-                        .numpy()[0]
-                    )
+                    # reward = float(
+                    #     self.reward_model.predict(
+                    #         torch.tensor([self.user]).long().to(self.device),
+                    #         torch.tensor([action]).long().to(self.device),
+                    #     )
+                    #     .detach()
+                    #     .cpu()
+                    #     .numpy()[0]
+                    # )
+                    reward = self.reward_model.predict(np.array([[self.user, action]]))[
+                        0
+                    ]
                 else:
                     reward = 0
 
         elif self.use_only_reward_model and (action not in self.recommended_items):
-            reward = (
-                self.reward_model.predict(
-                    torch.tensor([self.user]).long().to(self.device),
-                    torch.tensor([action]).long().to(self.device),
-                )
-                .detach()
-                .cpu()
-                .numpy()[0]
-            )
+            # reward = float(
+            #     self.reward_model.predict(
+            #         torch.tensor([self.user]).long().to(self.device),
+            #         torch.tensor([action]).long().to(self.device),
+            #     )
+            #     .detach()
+            #     .cpu()
+            #     .numpy()[0]
+            # )
+            reward = self.reward_model.predict(np.array([[self.user, action]]))[0]
 
         return reward
 
