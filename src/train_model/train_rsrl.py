@@ -227,8 +227,7 @@ class RSRL(luigi.Task):
         )
         catalog = item_groups_df.item_id.unique().tolist()
 
-        top_k = [5, 10]
-
+        top_k = [10]
         _precision = []
         _propfair = []
         _ufg = []
@@ -327,7 +326,6 @@ class RSRL(luigi.Task):
                 result = recommender.online_evaluate(
                     top_k=False, load_model=True, env=eval_env
                 )
-
                 recommended_item.append(result["recommended_items"])
                 random_recommended_item.append({user_id: sample(catalog, k)})
                 exposure.append(result["exposure"])
@@ -352,6 +350,8 @@ class RSRL(luigi.Task):
                     "propfair": [],
                     "precision": [],
                     "reward": [],
+                    "relevance": [],
+                    "fairness": [],
                 }
                 user_actions[int(result["user_id"])]["intent"] = result["user_intent"]
                 user_actions[int(result["user_id"])]["propfair"] = result[
@@ -361,6 +361,8 @@ class RSRL(luigi.Task):
                     "precision_list"
                 ]
                 user_actions[int(result["user_id"])]["reward"] = result["reward_list"]
+                user_actions[int(result["user_id"])]["relevance"] = result["relevance"]
+                user_actions[int(result["user_id"])]["fairness"] = result["fairness"]
 
                 del eval_env
 

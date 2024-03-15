@@ -145,13 +145,15 @@ class OfflineFairEnv(OfflineEnv):
         Notes
         -------
         User intent is the cosine similarity between all items positively rated by the user.
-        If user_intent = 1 the user likes similar items.
-        If user_intent = 0 the user likes different items.
+        If user_intent = 0 the user likes similar items.
+        If user_intent = 1 the user likes different items.
         """
 
         if self.user_intent == "item_emb_pmf":  # Item embedding PMF
             user_intent = pd.DataFrame(
-                self.item_embeddings[list(self.correctly_recommended)].cpu().numpy()
+                self.item_embeddings[list(self.correctly_recommended)[-5:]]
+                .cpu()
+                .numpy()
             )
             user_intent = cosine_similarity(user_intent, user_intent)[
                 np.triu_indices(user_intent.shape[0], k=1)
@@ -271,7 +273,6 @@ class OfflineFairEnv(OfflineEnv):
                     self.fairness_constraints[group - 1]
                     / np.sum(self.fairness_constraints)
                 ) - (self.group_count[group] / np.sum(self.get_group_count()))
-
                 fair_reward = (reward * (1 - user_intent)) + (
                     fair_reward * (user_intent)
                 )
@@ -305,7 +306,6 @@ class OfflineFairEnv(OfflineEnv):
             Extra information about the environment.
             Format: {'recommended_items': recommended_items, 'precision': precision}
         """
-
         if top_k:
             correctly_recommended = []
             rewards = []
@@ -359,5 +359,14 @@ class OfflineFairEnv(OfflineEnv):
             self.items,
             reward,
             self.done,
-            {"recommended_items": self.recommended_items, "precision": precision},
+            {
+                "recommended_items": self.recommended_items,
+                "precision": precision,
+                "relevance": _reward,
+                "fairness": (
+                    self.fairness_constraints[group - 1]
+                    / np.sum(self.fairness_constraints)
+                )
+                - (self.group_count[group] / np.sum(self.get_group_count())),
+            },
         )

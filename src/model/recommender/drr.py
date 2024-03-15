@@ -554,6 +554,8 @@ class DRRAgent:
         buffer_propfair = []
         buffer_precision = []
         buffer_reward = []
+        buffer_relevance = []
+        buffer_fairness = []
 
         # Environment
         user_id, items_ids, done = env.reset()
@@ -652,6 +654,8 @@ class DRRAgent:
             else:
                 mean_precision += info["precision"]
 
+            buffer_relevance.append(info["relevance"])
+            buffer_fairness.append(info["fairness"])
             buffer_precision.append(info["precision"])
             buffer_reward.append(np.sum(reward) if top_k else reward)
 
@@ -682,6 +686,8 @@ class DRRAgent:
             "user_intent": buffer_intent,
             "user_action_rank": buffer_actions,
             "user_propfair": buffer_propfair,
+            "relevance": buffer_relevance,
+            "fairness": buffer_fairness,
         }
 
     def offline_evaluate(self, env, top_k=0, available_items=None):
