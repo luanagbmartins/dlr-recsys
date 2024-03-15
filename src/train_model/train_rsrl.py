@@ -87,9 +87,9 @@ class RSRL(luigi.Task):
             ),
         }
 
-    def requires(self):
-        # return DownloadPMFModel()
-        return DownloadBPMFModel()
+    # def requires(self):
+    #     # return DownloadPMFModel()
+    #     return DownloadBPMFModel()
 
     def run(self):
         dataset = self.load_data()
@@ -227,7 +227,7 @@ class RSRL(luigi.Task):
         )
         catalog = item_groups_df.item_id.unique().tolist()
 
-        top_k = [10]
+        top_k = [15]
         _precision = []
         _propfair = []
         _ufg = []

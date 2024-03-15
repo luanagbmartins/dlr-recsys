@@ -276,6 +276,13 @@ class OfflineFairEnv(OfflineEnv):
                 fair_reward = (reward * (1 - user_intent)) + (
                     fair_reward * (user_intent)
                 )
+            elif self.reward_version == "relevance":
+                fair_reward = reward
+            elif self.reward_version == "fairness":
+                fair_reward = (
+                    self.fairness_constraints[group - 1]
+                    / np.sum(self.fairness_constraints)
+                ) - (self.group_count[group] / np.sum(self.get_group_count()))
 
         else:
             # The item is already recommended, therefore penalizes the agent

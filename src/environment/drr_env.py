@@ -355,5 +355,17 @@ class OfflineEnv(object):
             self.items,
             reward,
             self.done,
-            {"recommended_items": self.recommended_items, "precision": precision},
+            {
+                "recommended_items": self.recommended_items,
+                "precision": precision,
+                "relevance": _reward,
+                "fairness": (
+                    self.fairness_constraints[self.item_groups[action] - 1]
+                    / np.sum(self.fairness_constraints)
+                )
+                - (
+                    self.group_count[self.item_groups[action]]
+                    / np.sum(self.get_group_count())
+                ),
+            },
         )
